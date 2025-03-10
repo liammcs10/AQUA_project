@@ -50,6 +50,8 @@ class AQUA:
         self.t = t_start #+ self.tau
 
 
+
+
     def neuron_model(self, x, w_delay, I):
         """
         Definition of the izhikevich neuron model. 
@@ -66,6 +68,8 @@ class AQUA:
 
         return np.array([dv, du, dw]) 
     
+
+
 
     def update_RK2(self, dt, N_iter, I_inj):
         """
