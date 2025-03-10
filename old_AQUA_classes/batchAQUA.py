@@ -39,7 +39,7 @@ class batchAQUA:
 
         IN
             x_start:        numpy array (N_models, 3)
-            t_start:        numpy array (N_models)
+            t_start:        float
         
         """
         self.x = x_start
@@ -120,6 +120,8 @@ class batchAQUA:
                 spike_times[i].append(self.t) # append the time of spike.
 
             X[:, :, n] = self.x
+
+        spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
     
         return X, T, spike_times
 
