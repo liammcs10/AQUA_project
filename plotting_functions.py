@@ -1,4 +1,4 @@
-# Some functions to make it easier to plot the 
+ # Some functions to make it easier to plot the 
 # membrane variables agains each other
 
 import numpy as np
@@ -13,7 +13,7 @@ from mpl_toolkits.mplot3d.art3d import Line3DCollection
 def plot_membrane_variables(X, T, split = []):
     # X has shape: 3 x N_iter
     # T has shape: N_iter
-    # split: describes the sub_range of values to zoom in to.
+    # split: describes the sub_range of values to zoom into.
     if len(split) == 0:
         split = range(len(T))
     fig, ax = plt.subplots(3, 1, figsize = (15, 5), sharex = 'all')
@@ -27,19 +27,26 @@ def plot_membrane_variables(X, T, split = []):
     ax[-1].set_xlabel("Time [ms]")
     return fig, ax
 
-def plot_potential_versus_injected(X, T, I_inj):
-    fig, ax = plt.subplots(2, 1, figsize = (10, 10))
-    fig.tight_layout()
 
-    ax[0].plot(T, I_inj, c = 'r')
-    ax[0].title.set_text('injected current')
+def plot_potential_versus_injected(X, T, I_inj, split = []):
+
+    if len(split) == 0:
+        split = range(len(T))
+
+    fig, ax = plt.subplots(2, 1, figsize = (8, 8))
+    #fig.tight_layout()
+
+    ax[0].plot(T[split], I_inj[split], c = 'r')
+    #ax[0].title.set_text('injected current')
     ax[0].set_ylabel('Injected current [pA]')
 
-    ax[1].plot(T, X[0, :], c = 'blue')
-    ax[1].title.set_text('membrane response')
+    ax[1].plot(T[split], X[0, split], c = 'blue')
+    #ax[1].title.set_text('membrane response')
     ax[1].set_ylabel('membrane \n potential [mV]')
+    ax[1].set_xlabel('Time [ms]')
 
     return fig, ax
+
 
 def time_dependent_frequency(spikes):
     #spike times are in ms
@@ -116,6 +123,7 @@ def plot_3D(X, split):
 
     fig.tight_layout(pad = 2.0)
     return fig
+
 
 def plot_3D_gradient(X, split):
     # Plots a 2x2 figure with a 3D phase plot, and 3 2D projections.
@@ -264,3 +272,39 @@ def plot_VUtime(X, T, split, I, neuron, N_dim):
     surf1 = ax1.plot_surface(V_grid, T_grid, v_null, cmap = 'coolwarm', antialiased = False, linewidth = 0, alpha = 0.5)
     surf2 = ax1.plot_surface(V_grid, T_grid, u_null, cmap = 'PuBuGn', antialiased = False, linewidth = 0, alpha = 0.5) 
     return fig
+
+
+def plot_bifurcation_I(spikes, I_range, steady_state = True):
+    """
+    Plots the steady-state or instantaneous ISIs versus injected current. 
+    
+    INPUT:
+        spikes:         ndarray of spike times
+                        each row is a different simulation
+        I_range:        array
+                        injected currents
+        steady_state:   boolean
+                        True if steady state ISIs, otherwise instantaneous
+    
+    OUTPUT:
+        fig, ax:        matplotlib obj
+    
+    """
+    fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+    for i in range(np.shape(spikes)[0]):
+        spike_times = spikes[i, ~np.isnan(spikes[i])] # get row and remove nan values
+        if steady_state:
+            subSpikes = spike_times[-int(0.5*len(spike_times)):] # last half of spikes
+        else: # if instantaneous is desired
+            subSpikes = spike_times[:int(0.5*len(spike_times))]  # first half of spikes
+        
+        ISI = np.diff(subSpikes)
+        isi_vals, isi_counts = np.unique(np.round(ISI, decimals = 4), return_counts = True)
+        ax.scatter(I_range[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, c = 'black', s = 0.8, marker = "o")
+
+    return fig, ax
+
+"""
+def animate_train(X, T, I, out_dir):
+    # Create an animation for the injected current and output membrane variables
+"""

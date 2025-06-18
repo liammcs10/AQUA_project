@@ -39,7 +39,7 @@ class batchAQUA:
 
         IN
             x_start:        numpy array (N_models, 3)
-            t_start:        numpy array (N_models)
+            t_start:        float
         
         """
         self.x = x_start
@@ -120,5 +120,24 @@ class batchAQUA:
                 spike_times[i].append(self.t) # append the time of spike.
 
             X[:, :, n] = self.x
+
+        spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
     
         return X, T, spike_times
+
+    def get_params(self, i):
+        # returns the dictionary of params for neuron i
+
+        dict = {'a': self.a[i],
+                'b': self.b[i],
+                'c': self.c[i],
+                'd': self.d[i],
+                'e': self.e[i],
+                'f': self.f[i],
+                'tau': self.tau[i]}
+
+        return dict
+
+def pad_list(lst, pad_value=np.nan):
+    max_length = max(len(sublist) for sublist in lst)
+    return np.array([sublist + [pad_value] * (max_length - len(sublist)) for sublist in lst])
