@@ -1,0 +1,65 @@
+Will try to identify transitions between know classes of neuron firing types.
+Some papers have already done this in different neuron models. 
+e.g.
+    'Different dynamical behaviours induced by slow excitatory feedback...' Zhao et al.
+    'Transitions between classes of neuronal excitability...' Zhao et al.
+    other papers mentioned therein
+
+Can we generate phase plots and identify the types of bifurcations of the spiking state as I is increased/decreased?
+
+
+Main tests:
+    * Apply step currents of different heights (Class 1, 2, 3)
+    * apply ramp current (Class 1, 2, 3)
+    * apply a jolt (or jolts at certain frequencies) of current (integrator vs resonator)
+    Typically ID the *excitability* class, applying these in reverse helps understand the *spiking* class
+
+    * Can also apply spike trains sampled from different distributions. 
+    See what distribution of outputs is passed, information quantities, frequency filtering, etc...
+            * In this case, you can study the spike-triggered average (STA) (i.e. the average input 
+            immediately before a spike), this represents almost the receptive field of the neuron. 
+            STA is the first term in the Volterra series expansion (output of a nonlinear system - 
+            like taylor expansion - depends on a memory of all previous inputs). Typically involves 
+            white noise stimuli.
+            * Also see STC, 2nd-order volterra kernel.
+            * Neuron will have a baseline STA/STC, subtract this to get the autaptic STA/STC
+            * STA/STC used in "Impact of Neuronal Properties on Network Coding..." (Ratte et al.)
+    * See 'response of HH neuron to various types of spike trains' Hasegawa - There, first 
+    return maps are another way of understanding the response.
+    * sinusoidal or periodic inputs: ID mode locking, frequency filtering, etc...
+    * Noisy inputs: low/band pass filtering (related to frequency inputs), ability to detect 
+    oscillations in the noisy input?
+    * Phase Response Curves??
+    * Can autapses selecively decode multiplexed information? Perhaps several firing frequencies are 
+    present in the input, or synchronous/asynchronous signals are multiplexed.
+    * We can quantify the complexity of the response. Information might be high because the ISI distribution is 
+    complex, but the neuron might just be bursting slightly irregularly. See 'statistical complexity' where random
+    processes have low complexity, just like deterministic processes.
+    * Investigate chaotic resonance in these systems...
+
+
+
+    Goal is to test these various metrics on models of neurons which are know to feature many autapses using 
+realistic autapse parameters. In this way, we can start to identify the behavioural regimes that these neurons 
+might benefit from.
+Test in a robust way: 1) how does the control neuron respond? 2) One by one, vary autaptic parameters 
+and see how these change the neuron's response. F and e can be used to measure the strength of the autapse,
+increasing these increases the effective autapse. Time delay will be independent but interesting nontheless.
+
+
+Possible ways of classifying the autapse:
+    - strength = total number of ions passed (function of f and e)
+    - effective delay = time till ~60prct of the current has passed (tau + 1/e)
+    - Different behaviour might be related to how these parameters relate to intrinsic time constants of the neuron model.
+
+
+
+FUTURE AVENUES:
+    - Look into 'local information dynamics' (A lot of work by Lizier and Prokopenko), this looks at neural information 
+    processing as the local storage, transfer, or modification of information. Where do autapses fall into this? It could 
+    depend on the type of input. 
+    - Possibly investigate at the neuron level, or generate a simulation and see what each layer does, and how the 
+    autapse density alters this. 
+    - Do autapses self-organise the network towards criticality? The balance of E/I autapses could push activity towards 
+    criticality as one population, or the other 
+

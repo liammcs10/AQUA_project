@@ -1,0 +1,15 @@
+Testing the response properties of neurons with autapses.
+
+Qs:
+    * Can we remove the time delay? Put some value corresponding to synaptic 
+    transmission + the rise time (0.3-0.5 ms).
+
+Population:
+    - One neuron type (FS, RS, etc...)
+    - fix the decay constant for now (e = 0.3 => t = 3.33 s to reach 37% of the original value)
+    - varying degrees of synaptic conductance measuring the 'extent' of the autapses.
+
+Tests:
+    - Apply various step currents and retrieve the steady state frequency -> F-I curve
+    - Apply a single ramp (or multiple with different slopes?) -> F-I curve
+    - 
