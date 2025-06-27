@@ -49,7 +49,7 @@ class AQUA:
         self.a, self.b, self.c, self.d = param_dict['a'], param_dict['b'], param_dict['c'], param_dict['d']
         self.e, self.f, self.tau = param_dict['e'], param_dict['f'], param_dict['tau']
         self.x = np.zeros(3)
-        self.t = 0.0
+        self.t = 0.0 
 
     def Initialise(self, x_start, t_start):
         """
@@ -57,8 +57,8 @@ class AQUA:
         x is 3-element [v, u, w]. If no autapse, w is unchanged.
         t is a float.
         """
-        self.x[:] = x_start
-        self.t = t_start #+ self.tau
+        self.x[:] = np.array(x_start, dtype = np.float64)
+        self.t = float(t_start)
 
 
     def neuron_model(self, x, w_delay, I):
@@ -126,14 +126,14 @@ class AQUA:
             # Here, index n-1 corresponds to the 'current' value off which updates need to be estimated.
 
             if n <= delay_steps: 
-                w_tau1 = w_prev[n - delay_steps] # value of autapse current prior to simulation
+                w_tau1 = w_prev[n - delay_steps - 1] # value of autapse current prior to simulation
             else:
                 w_tau1 = X[2, n - delay_steps - 1]
             
             k1 = self.neuron_model(self.x, w_tau1, I_inj[n - 1])
 
-            if n < delay_steps: # change 6/17 - 2:38pm
-                w_tau2 = w_prev[n - delay_steps + 1]
+            if n < delay_steps: 
+                w_tau2 = w_prev[n - delay_steps]
             elif delay_steps == 0 or n == delay_steps:
                 w_tau2 = self.x[2] + k1[2] * dt 
             else:
