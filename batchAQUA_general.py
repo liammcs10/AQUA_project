@@ -49,8 +49,8 @@ class batchAQUA:
             t_start:        numpy array (N_models)
         
         """
-        self.x = np.array(x_start)
-        self.t = np.array(t_start)
+        self.x = np.array(x_start, dtype = np.float64)
+        self.t = np.array(t_start, dtype = np.float64)
     
     def neuron_model(self, x, w_delay, I):
         """
@@ -73,11 +73,11 @@ class batchAQUA:
         du = np.zeros(np.shape(u))
         # FS neurons have a nonlinear u-nullcline.
 
-        cond_FS_hyperpolarized = (np.core.defchararray.find(self.name, "FS")!=-1) & (v < -55)
-        cond_FS_depolarized = (np.core.defchararray.find(self.name, "FS")!=-1) & (v >= -55)
-        cond_notFS = (np.core.defchararray.find(self.name, "FS")==-1)
+        cond_FS_hyperpolarized = (np.char.find(self.name, "FS")!=-1) & (v < -55)  # is FS and hyperpolarized
+        cond_FS_depolarized = (np.char.find(self.name, "FS")!=-1) & (v >= -55)    # is FS and depolarized 
+        cond_notFS = (np.char.find(self.name, "FS")==-1) # not FS
         # update FS neuron
-        du[cond_FS_hyperpolarized] = self.a[cond_FS_hyperpolarized] * (-1. * u[cond_FS_hyperpolarized]) # where neuron is FS and v < -55
+        du[cond_FS_hyperpolarized] = self.a[cond_FS_hyperpolarized] * (-1. * u[cond_FS_hyperpolarized]) # where neuron is FS and v < -55, U = 0
         du[cond_FS_depolarized] = self.a[cond_FS_depolarized] * (0.025 * (v[cond_FS_depolarized] + 55.)**3 - u[cond_FS_depolarized])
         # all other neurons are normal
         du[cond_notFS] = self.a[cond_notFS] * (self.b[cond_notFS] * (v[cond_notFS] - self.v_r[cond_notFS]) - u[cond_notFS])
@@ -96,6 +96,7 @@ class batchAQUA:
             N_iter:     total number of time_steps
             I_inj:      timeseries of injected currents, shape: (N_models, N_iter)
             w_prev:     array, autapse currents prior to sim start - shape: (N_models, delay_steps)
+                        if different tau, pad this list with np.nan with pad_end = False
 
         OUT:
             X:          value of all membrane variables through the trial
@@ -106,6 +107,7 @@ class batchAQUA:
         """
 
         delay_steps = (self.tau / dt).astype(int)
+
 
         if len(w_prev) == 0:
             w_prev = np.zeros(shape = (self.N_models, np.max(delay_steps))) # assume no prior spikes
@@ -121,25 +123,30 @@ class batchAQUA:
         for n in tqdm(range(1, N_iter)):  # each neuron updated simultaneously with vectorization
 
             if n <= np.max(delay_steps): # early in sim
+
                 w_tau1 = np.zeros(self.N_models)                
                 tau_idx = np.nonzero(~(n <= delay_steps))                        # indices that need updating
                 prev_idx = np.nonzero(n <= delay_steps)                          # where delay_steps extends prior to the sim
-                w_tau1[tau_idx] = X[tau_idx, 2, n - delay_steps[tau_idx] - 1]    # get w at the delay
-                w_tau1[prev_idx] = w_prev[prev_idx, n - delay_steps[prev_idx]]
+                w_tau1[tau_idx] = X[tau_idx, 2, n - delay_steps[tau_idx]-1]       # get w at the delay
+                w_tau1[prev_idx] = w_prev[prev_idx, n - delay_steps[prev_idx] - 1]
+
+                
                 k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])            # first RK param
                 
                 w_tau2 = np.zeros(self.N_models)  
-                bool_idx0 = np.nonzero(n < delay_steps)
-                bool_idx1 = np.nonzero(delay_steps == 0.0)           
-                bool_idx2 = np.nonzero(n >= delay_steps)
+                bool_idx0 = np.nonzero(n <= delay_steps - 1)         # delay_steps extends before the sim start
+                bool_idx1 = np.nonzero(delay_steps == 0.0)           # case where there is no delay, need to estimate w_tau2
+                bool_idx2 = np.nonzero(n > delay_steps - 1)          # case where w_tau2 is has been calculated previously
 
-                w_tau2[bool_idx0] = w_prev[bool_idx0, n - delay_steps[bool_idx0] + 1]
+                w_tau2[bool_idx0] = w_prev[bool_idx0, n - delay_steps[bool_idx0]]
                 w_tau2[bool_idx1] = self.x[bool_idx1, 2] + k1[bool_idx1, 2] * dt            # update under first condition
                 w_tau2[bool_idx2] = X[bool_idx2, 2, n - delay_steps[bool_idx2]]             # update under other condition
+
                 k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])               # second RK param
+
             else: # all neurons are beyond delay steps
-                rows = np.arange(np.shape(X)[0])
-                w_tau1 = X[rows, 2, n - delay_steps - 1]                        # get w at the delay - should be shape (2, )
+                rows = np.arange(np.shape(X)[0])            # all rows
+                w_tau1 = X[rows, 2, n - delay_steps - 1]                    # get w at the delay - should be shape (2, )
                 k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])           # first RK param
                 
                 w_tau2 = np.zeros(self.N_models)  
@@ -158,7 +165,7 @@ class batchAQUA:
             self.x[idx, 0] = self.c[idx]
             self.x[idx, 1] += self.d[idx]
             self.x[idx, 2] += self.f[idx]
-
+            
             for i in idx[0]: # loop through the indices that have been updated
                 spike_times[i].append(self.t[i]) # append the time of spike.
             
@@ -187,6 +194,10 @@ class batchAQUA:
 
         return dict
 
-def pad_list(lst, pad_value=np.nan):
+def pad_list(lst, pad_value=np.nan, pad_end = True):
     max_length = max(len(sublist) for sublist in lst)
-    return np.array([sublist + [pad_value] * (max_length - len(sublist)) for sublist in lst])
+    if pad_end:     # pad the end of the list
+        return np.array([sublist + [pad_value] * (max_length - len(sublist)) for sublist in lst])
+    else:           # pad the front of the list
+        return np.array([[pad_value] * (max_length - len(sublist)) + sublist for sublist in lst])
+    

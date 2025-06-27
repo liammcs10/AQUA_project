@@ -59,7 +59,7 @@ def phase_response(neuron_params, I_h, T_pert, H_pert):
     # temporary initial conditions
     x_ini = np.array([-80, 0, 0])
     t_ini = 0.0
-    duration, t_i, t_f, t_ini, x_ini, X_base = get_baseline(neuron_params, I_h, x_ini, t_ini, dt)
+    duration, t_i, t_f, t_ini, x_ini, w_past, X_base = get_baseline(neuron_params, I_h, x_ini, t_ini, dt)
     print(f"duration: {duration}")  # length of simulation
     print(f"t_i: {t_i}") # 2nd to last spike time
     print(f"t_f: {t_f}") # last spike time
@@ -93,7 +93,9 @@ def phase_response(neuron_params, I_h, T_pert, H_pert):
         
         I_inj = get_injected(I_h, pert_times[lower_bound:upper_bound], N, duration, perturbation)
 
-        norm_tp, PRC, delta_T, X_prc = get_PRC(N, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, t_p[lower_bound:upper_bound])
+        w_prev = np.array([w_past for _ in range(N)]) # make past w N x delay_steps
+
+        norm_tp, PRC, delta_T, X_prc = get_PRC(N, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, t_p[lower_bound:upper_bound], w_prev)
 
 
         data[0, lower_bound:upper_bound] = I_h
@@ -181,8 +183,10 @@ def get_baseline(neuron_params, I_h, x_ini, t_ini, dt):
     
     duration = (t_f - t_start) + (t_f - t_i)/2    # duration of phase-response sims in ms
     duration = int(np.round(duration/dt)) # duration in time steps
+
+    w_past = X[2, int((t_start - neuron.tau)/dt):int(t_start/dt)]
     
-    return duration, t_i, t_f, t_start, x_start, X[:, int(t_start/dt): int(t_start/dt) + duration]
+    return duration, t_i, t_f, t_start, x_start, w_past, X[:, int(t_start/dt): int(t_start/dt) + duration]
 
 
 ## STEP 2
@@ -225,7 +229,7 @@ def get_injected(I_h, pert_times, N, duration, perturbation):
     return I_inj
 
 ## STEP 3
-def get_PRC(N_pert, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, t_p):
+def get_PRC(N_pert, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, t_p, w_past = []):
 
     # create initialization arrays for the batch
     params_list = []
@@ -241,9 +245,8 @@ def get_PRC(N_pert, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, 
     batch.Initialise(x_start, t_start)
 
     # run perturbation sims.
-    X, _, spikes = batch.update_batch(dt, duration, I_inj)
-    print(t_i)
-    print(spikes[0, :])
+    X, _, spikes = batch.update_batch(dt, duration, I_inj, w_past)
+
     # compare the deviation in the last spike to the time of the perturbation
     
     delta_T = t_f - t_i     # baseline firing period
