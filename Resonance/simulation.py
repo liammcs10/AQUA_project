@@ -74,11 +74,10 @@ def sim(args, conf):
     peak_resonance = np.mean(resonance_bands_base_neuron[largest_band_idx])
 
     ## 2nd test: a train of pulses all equally spaced. We want to see if a spike occurrs on subsequent pulses
-    N_pulses, multipulse_freq, num_spikes, spike_freq = second_test(conf, N_neurons, params_arr, threshold, x_ini, peak_resonance, pulse_height, time_to_spike)
+    N_pulses, multipulse_freq, num_spikes, spike_freq = second_test(conf, N_neurons, params_arr, peak_resonance, pulse_height, time_to_spike)
     
     spike_to_pulse_ratio = num_spikes / N_pulses
     spike_to_pulse_freq_ratio = spike_freq / multipulse_freq
-    
 
 
     # At this stage just save the outputs
