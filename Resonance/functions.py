@@ -31,14 +31,14 @@ def find_threshold(neuron_params, I_list, T, dt):
 
     N_neurons = np.shape(I_list)[0]
 
-    I_inj = np.array([i*np.ones(N_iter) for i in I_list])
+    I_inj = np.array([i*np.ones(N_iter) for i in I_list], dtype = np.float32)
 
     # batch list of params
     params = [neuron_params for n in range(N_neurons)]
 
-    x_start = np.full((N_neurons, 3), fill_value = np.array([neuron_params["c"], 0., 0.]))
+    x_start = np.full((N_neurons, 3), fill_value = np.array([neuron_params["c"], 0., 0.], dtype=np.float32))
 
-    t_start = np.zeros(N_neurons)
+    t_start = np.zeros(N_neurons, dtype=np.float32)
 
     neurons = batchAQUA(params)
     neurons.Initialise(x_start, t_start)
@@ -51,14 +51,13 @@ def find_threshold(neuron_params, I_list, T, dt):
     above_threshold = I_list[idx_threshold + 1]
 
     #redefine I_inj
-    I_list_thresh = np.linspace(sub_threshold, above_threshold, N_neurons)
-    I_inj_thresh = np.array([i*np.ones(N_iter) for i in I_list_thresh])
+    I_list_thresh = np.linspace(sub_threshold, above_threshold, N_neurons, dtype=np.float32)
+    I_inj_thresh = np.array([i*np.ones(N_iter, dtype = np.float32) for i in I_list_thresh], dtype = np.float32)
 
     neurons.Initialise(x_start, t_start)
-    X, _, spikes_thresh = neurons.update_batch(dt, N_iter, I_inj_thresh)
-    print("More precise")
-    print(spikes_thresh)
-    idx_threshold = np.argwhere(np.isnan(spikes_thresh[:, 0]).flatten())[-1]
+    X, _, spikes = neurons.update_batch(dt, N_iter, I_inj_thresh)
+
+    idx_threshold = np.argwhere(np.isnan(spikes[:, 0]).flatten())[-1]
 
     threshold = I_list_thresh[idx_threshold][0] # closer estimate of the threshold
     steady_state = X[idx_threshold, :, -1][0]
@@ -96,26 +95,26 @@ def find_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration):
 
     delay = 100
 
-    I_inj = np.array([spikes_constant(N_iter, dt, threshold, 0.0, 1, i, pulse_duration, delay) for i in I_list])
+    I_inj = np.array([spikes_constant(N_iter, dt, threshold, 0.0, 1, i, pulse_duration, delay) for i in I_list], dtype = np.float32)
 
     # batch list of params
     params = [neuron_params for n in range(N_neurons)]
 
-    x_start = np.full((N_neurons, 3), fill_value = x_ini)
-    t_start = np.zeros(N_neurons)
+    x_start = np.full((N_neurons, 3), fill_value = x_ini, dtype = np.float32)
+    t_start = np.zeros(N_neurons, dtype = np.float32)
 
     neurons = batchAQUA(params)
     neurons.Initialise(x_start, t_start)
 
-    _, _, spikes_first = neurons.update_batch(dt, N_iter, I_inj)
+    _, _, spikes = neurons.update_batch(dt, N_iter, I_inj)
     
-    idx_threshold = np.argwhere(~np.isnan(spikes_first[:, 0]).flatten())[0]
+    idx_threshold = np.argwhere(~np.isnan(spikes[:, 0]).flatten())[0]
     pulse_height_low = I_list[idx_threshold]        # first estimate of the pulse height
     pulse_height_high = I_list[idx_threshold + 1]   # second estimate of the pulse height
 
     # refine the search
-    I_list_refine = np.linspace(pulse_height_low, pulse_height_high, N_neurons)
-    I_inj_refine = np.array([spikes_constant(N_iter, dt, threshold, 0.0, 1, i, pulse_duration, delay) for i in I_list_refine])
+    I_list_refine = np.linspace(pulse_height_low, pulse_height_high, N_neurons, dtype = np.float32)
+    I_inj_refine = np.array([spikes_constant(N_iter, dt, threshold, 0.0, 1, i, pulse_duration, delay) for i in I_list_refine], dtype = np.float32)
 
     # re-initialise the neurons
     neurons.Initialise(x_start, t_start)
@@ -172,7 +171,7 @@ def find_2nd_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duratio
     delay = 100 # ms
 
     # I_inj = np.array([spikes_constant(N_iter, dt, threshold, 0.0, 1, i, pulse_duration, delay) for i in I_list])
-    I_inj = threshold*np.ones((N_neurons, N_iter))
+    I_inj = threshold*np.ones((N_neurons, N_iter), dtype = np.float32)
     pulse1_start = int(delay/dt)
     pulse1_end = int((delay+pulse_duration)/dt)
     I_inj[:, pulse1_start:pulse1_end] += first_pulse_height # create the first pulse
@@ -186,22 +185,22 @@ def find_2nd_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duratio
     # batch list of params
     params = [neuron_params for n in range(N_neurons)]
 
-    x_start = np.full((N_neurons, 3), fill_value = x_ini)
-    t_start = np.zeros(N_neurons)
+    x_start = np.full((N_neurons, 3), fill_value = x_ini, dtype = np.float32)
+    t_start = np.zeros(N_neurons, dtype = np.float32)
 
     neurons = batchAQUA(params)
     neurons.Initialise(x_start, t_start)
 
-    _, _, spikes_first = neurons.update_batch(dt, N_iter, I_inj)
-    print(spikes_first)
+    _, _, spikes = neurons.update_batch(dt, N_iter, I_inj)
+    print(spikes)
 
-    idx_threshold = np.argwhere(~np.isnan(spikes_first[:, 1]).flatten())[0]
+    idx_threshold = np.argwhere(~np.isnan(spikes[:, 1]).flatten())[0]
     pulse_height_low = I_list[idx_threshold]            # first estimate of the pulse height
     pulse_height_high = I_list[idx_threshold + 1]       # second estimate of the pulse height
 
     # refine the search
-    I_list_refine = np.linspace(pulse_height_low, pulse_height_high, N_neurons)
-    I_inj_refine = threshold*np.ones((N_neurons, N_iter))
+    I_list_refine = np.linspace(pulse_height_low, pulse_height_high, N_neurons, dtype = np.float32)
+    I_inj_refine = threshold*np.ones((N_neurons, N_iter), dtype = np.float32)
     I_inj_refine[:, pulse1_start:pulse1_end] += first_pulse_height
     for n, i in enumerate(I_list_refine):      # define the second pulse as 
         I_inj_refine[n, pulse2_start:pulse2_end] += i
