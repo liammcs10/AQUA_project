@@ -58,10 +58,12 @@ def find_threshold(neuron_params, I_list, T, dt):
     neurons.Initialise(x_start, t_start)
     X, T, spikes = neurons.update_batch(dt, N_iter, I_inj_thresh)
 
-    fig, ax = plot_membrane_variables(X[-20:], T[-20:])
-    plt.show()
-
     idx_threshold = np.argwhere(np.isnan(spikes[:, 0]).flatten())[-1]
+
+    split = np.arange(0, N_iter)
+    print(np.shape(X[idx_threshold].reshape((3, N_iter))))
+    fig, ax = plot_membrane_variables(X[idx_threshold, :].reshape((3, N_iter)), T, split = split)
+    plt.show()
 
     threshold = I_list_thresh[idx_threshold][0] # closer estimate of the threshold
     steady_state = X[idx_threshold, :, -1][0]
