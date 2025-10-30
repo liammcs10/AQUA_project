@@ -8,7 +8,7 @@ import numpy as np
 import cupy as cp
 from tqdm import tqdm
 
-class batchAQUA:
+class batchAQUA_GPU:
 
     def __init__(self, params_list):
         """
