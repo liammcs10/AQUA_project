@@ -135,14 +135,16 @@ def first_test(conf, N_neurons, params_arr):
 
     print("Finding pulse height...")
     # the height of the pulse which produces a spike and the relative timing of the spike.
-    pulse_height, time_to_spike = find_pulse_height(params_arr[0], np.linspace(100, 1000, 100), threshold, x_ini, pulse_duration)
-    pulse_height -= 10
+    pulse_height, pulse_height2, time_to_spike = find_pulse_height(params_arr[0], np.linspace(100, 1000, 100), threshold, x_ini, pulse_duration)
+    #pulse_height2 = pulse_height - 2 # second pulse is slightly weaker
+    pulse_heights = [pulse_height, pulse_height2]
+
     # define the frequency of the pulses relative to the spike timing.
     ISI_range = time_to_spike + 1000/freq_range
 
     # Define the injected current
     # structure: 0:N_neurons @ a given isi, increment isi and define N_neurons more neurons...
-    I_inj = np.array([spikes_constant(N_iter, dt, threshold, isi, N_pulses, pulse_height, pulse_duration, delay) for isi in ISI_range for n in range(N_neurons)])
+    I_inj = np.array([spikes_constant(N_iter, dt, threshold, isi, N_pulses, pulse_heights, pulse_duration, delay) for isi in ISI_range for _ in range(N_neurons)])
     N_sims = np.shape(I_inj)[0]     # N_neurons x N_isis
 
     # define batch now that we know how many simulations are run

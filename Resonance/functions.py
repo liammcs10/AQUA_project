@@ -128,11 +128,12 @@ def find_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration):
 
     idx_threshold = np.argwhere(~np.isnan(spikes[:, 0]).flatten())[0]
     pulse_height = I_list_refine[idx_threshold][0]     # close estimate of the pulse height
+    pulse_height2 = I_list_refine[idx_threshold+1][0]   # the next lowest pulse which didn't produce a spike.
 
     pulse_end = delay + pulse_duration - dt
     spike_time = spikes[idx_threshold, 0] - pulse_end
     
-    return pulse_height, spike_time
+    return pulse_height, pulse_height2, spike_time
 
 def find_2nd_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration, first_pulse_height, time_to_spike, resonant_ISI):
     """
@@ -548,7 +549,7 @@ def subsequent_spikes(spike_times, pulse_starts, multipulse_freq):
     ax.set_xticks(ticks = x_ticks, labels = np.round(multipulse_freq[x_ticks], 2))
     ax.set_xlabel("Pulse Frequency [Hz]", fontsize = 16)
     ax.set_ylabel("Neuron number", fontsize = 16)
-    ax.set_title("Number of pulses to produce a spike", fontsize = 20)
+    ax.set_title("Whether the second pulse after a spike, produces a spike", fontsize = 20)
     
     return fig, ax
 
@@ -628,7 +629,7 @@ def subsequent_spikes_by_params(spike_times, pulse_starts, multipulse_freq, para
     ax.set_xticks(ticks = x_ticks, labels = np.round(multipulse_freq[x_ticks], 2))
     ax.set_xlabel("Pulse Frequency [Hz]", fontsize = 16)
     ax.set_ylabel(f"Neuron number ordered by {params[0]}", fontsize = 16)
-    ax.set_title(f"Number of pulses to produce a spike order by {params}", fontsize = 20)
+    ax.set_title(f"Whether the second pulse after a spike, produces a spike ordered by {params}", fontsize = 20)
 
     cumsum = np.insert(cumsum, 0, 0.)
     tick_loc = (cumsum[:-1] + cumsum[1:])/2.0
