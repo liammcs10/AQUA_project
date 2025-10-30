@@ -80,7 +80,7 @@ def sim(args, conf):
     print(f"Peak Resonance: {peak_resonance}")
 
     ## 2nd test: a train of pulses all equally spaced. We want to see if a spike occurrs on subsequent pulses
-    N_pulses, multipulse_freq, num_spikes, spike_freq, spike_times, pulse_starts = second_test(conf, N_neurons, params_arr, peak_resonance, pulse_height, time_to_spike)
+    N_pulses, multipulse_freq, num_spikes, spike_freq, spike_times, pulse_starts = second_test(conf, N_neurons, params_arr, peak_resonance, pulse_height+10, time_to_spike)
     
     spike_to_pulse_ratio = num_spikes / N_pulses
     spike_to_pulse_freq_ratio = spike_freq / multipulse_freq
@@ -136,7 +136,7 @@ def first_test(conf, N_neurons, params_arr):
     print("Finding pulse height...")
     # the height of the pulse which produces a spike and the relative timing of the spike.
     pulse_height, time_to_spike = find_pulse_height(params_arr[0], np.linspace(100, 1000, 100), threshold, x_ini, pulse_duration)
-    
+    pulse_height -= 10
     # define the frequency of the pulses relative to the spike timing.
     ISI_range = time_to_spike + 1000/freq_range
 
