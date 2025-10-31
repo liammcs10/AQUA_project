@@ -29,7 +29,6 @@ def find_threshold(neuron_params, I_list, T, dt):
     """
 
     N_iter = int(1000*T/dt) # number of iterations
-
     N_neurons = np.shape(I_list)[0]
 
     I_inj = np.array([i*np.ones(N_iter) for i in I_list])
@@ -38,7 +37,6 @@ def find_threshold(neuron_params, I_list, T, dt):
     params = [neuron_params for n in range(N_neurons)]
 
     x_start = np.full((N_neurons, 3), fill_value = np.array([neuron_params["c"], 0., 0.]))
-
     t_start = np.zeros(N_neurons)
 
     neurons = batchAQUA(params)
@@ -114,9 +112,12 @@ def find_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration):
 
     _, _, spikes = neurons.update_batch(dt, N_iter, I_inj)
     
-    idx_threshold = np.argwhere(~np.isnan(spikes[:, 0]).flatten())[0]
-    pulse_height_low = I_list[idx_threshold]        # first estimate of the pulse height
-    pulse_height_high = I_list[idx_threshold + 1]   # second estimate of the pulse height
+    idx_low = np.argwhere(np.isnan(spikes[:, 0]).flatten())[-1] # last pulse to not produce a spike
+    idx_high = np.argwhere(~np.isnan(spikes[:, 0].flatten()))[0] # first pulse to produce a spike
+
+    pulse_height_low = I_list[idx_low]          # lower bound estimate
+    pulse_height_high = I_list[idx_high]        # upper bound estimate
+
 
     # refine the search
     I_list_refine = np.linspace(pulse_height_low, pulse_height_high, N_neurons)
@@ -126,9 +127,11 @@ def find_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration):
     neurons.Initialise(x_start, t_start)
     _, _, spikes = neurons.update_batch(dt, N_iter, I_inj_refine)
 
-    idx_threshold = np.argwhere(~np.isnan(spikes[:, 0]).flatten())[0]
-    pulse_height = I_list_refine[idx_threshold][0]     # close estimate of the pulse height
-    pulse_height2 = I_list_refine[idx_threshold+1][0]   # the next lowest pulse which didn't produce a spike.
+    idx_threshold = np.argwhere(~np.isnan(spikes[:, 0]).flatten())[0]   # first pulse to make spike
+    idx_2 = np.argwhere(np.isnan(spikes[:, 0].flatten()))[-1]   # last pulse to not make spike.
+    pulse_height = I_list_refine[idx_threshold][0]      # close estimate of the pulse height
+    pulse_height2 = I_list_refine[idx_2][0]             # the next lowest pulse which didn't produce a spike.
+
 
     pulse_end = delay + pulse_duration - dt
     spike_time = spikes[idx_threshold, 0] - pulse_end
@@ -201,11 +204,12 @@ def find_2nd_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duratio
 
     _, _, spikes = neurons.update_batch(dt, N_iter, I_inj)
 
-    idx_threshold = np.argwhere(~np.isnan(spikes[:, 1]).flatten())[0]
-    pulse_height_low = I_list[idx_threshold]            # first estimate of the pulse height
-    pulse_height_high = I_list[idx_threshold + 1]       # second estimate of the pulse height
+    idx_low = np.argwhere(np.isnan(spikes[:, 1]).flatten())[-1]     # last pulse no spike
+    idx_high = np.argwhere(~np.isnan(spikes[:, 1].flatten()))[0]    # first pulse to spike
+    pulse_height_low = I_list[idx_low]            # first estimate of the pulse height
+    pulse_height_high = I_list[idx_high]          # second estimate of the pulse height
 
-    """ Maybe don't need an accurate estimate for this experiment?
+    """ FOR more accurate pulse height...
     # refine the search
     I_list_refine = np.linspace(pulse_height_low, pulse_height_high, N_neurons)
     I_inj_refine = threshold*np.ones((N_neurons, N_iter))
@@ -217,10 +221,10 @@ def find_2nd_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duratio
     neurons.Initialise(x_start, t_start)
     _, _, spikes = neurons.update_batch(dt, N_iter, I_inj_refine)
 
-    idx_threshold = np.argwhere(~np.isnan(spikes[:, 1]).flatten())[0]
+    idx_threshold = np.argwhere(~np.isnan(spikes[:, 1]).flatten())[0]   #
     pulse_height = I_list_refine[idx_threshold][0]     # close estimate of the pulse height
     """
-    return pulse_height_low
+    return pulse_height_high
 
 
 def get_resonance_bands(resonant_f, spike_boolean):
@@ -243,7 +247,6 @@ def get_resonance_bands(resonant_f, spike_boolean):
     
     return frequency_bands
 
-#def get_pulse_limits(pulse_times):
 
 """- - - - PLOTTING FUNCTIONS - - - - """
 
