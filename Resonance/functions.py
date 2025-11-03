@@ -232,18 +232,19 @@ def get_resonance_bands(resonant_f, spike_boolean):
     Returns the resonance bands given the frequencies tested and number of spikes produced
     
     """
-    band_limits = np.diff(spike_boolean)
+    spike_boolean = spike_boolean.astype(int)
+    band_limits = np.diff(spike_boolean, prepend = 0, append = 0)
 
-    band_starts = np.argwhere(band_limits == 1).flatten()
-    band_ends = np.argwhere(band_limits == -1).flatten()
+    band_starts = np.where(band_limits == -1)[0]-1
+    band_ends = np.where(band_limits == 1)[0]
+    print("Bands")
+    print(band_starts)
+    print(band_ends)
 
-    frequency_bands = np.zeros((len(band_ends), 2))
+    frequency_bands = np.zeros((len(band_starts), 2))
 
-    for n in range(len(band_ends)): # count backwards
-        if n == 0:
-            frequency_bands[n] = np.array([0.0, resonant_f[band_ends[0]]]) # low frequencies trigger a spike
-        else:
-            frequency_bands[n] = np.array([resonant_f[band_starts[n-1]], resonant_f[band_ends[n]]])
+    for n in range(len(band_starts)): # band_starts and ends should be the same length
+        frequency_bands[n] = np.array([resonant_f[band_starts[n]], resonant_f[band_ends[n]]])
     
     return frequency_bands
 
