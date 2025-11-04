@@ -228,9 +228,6 @@ def get_resonance_bands(resonant_f, spike_boolean):
     
     """
     spike_boolean = spike_boolean.astype(int)
-    # sort frequencies in descending order
-    resonant_f = np.sort(resonant_f)
-    resonant_f = resonant_f[::-1]
 
     band_limits = np.diff(spike_boolean, prepend = 0, append = 0)
 
