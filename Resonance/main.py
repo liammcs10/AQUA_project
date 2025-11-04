@@ -97,8 +97,13 @@ def main():
     neuron_name = conf["Neuron"]["name"]
     
     # Simulation 1 outputs
-    frequencies = dict["Simulation 1"]["frequencies"]
-    bands = dict["Simulation 1"]["bands"]
+    frequencies1 = dict["Simulation 1"]["frequencies"]
+    bands1 = dict["Simulation 1"]["bands"]
+
+    # Three pulse output
+    frequencies2 = dict["Three pulses"]["frequencies"]
+    bands2 = dict["Three pulses"]["bands"]
+    num_spikes_three_pulses = dict["Three pulses"]["num_spikes"]
 
     # Simulation 2 outputs
     N_pulses = int(conf["Simulation 2"]["N_pulses"])
@@ -116,29 +121,52 @@ def main():
     """ Test 1 plots """
 
     ## Now plot the data...
-    fig1, ax1 = plot_resonance_map(frequencies, bands)
+    fig, ax, _ = plot_resonance_map(frequencies1, bands1)
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_unordered.png")
-    plt.show()
+    plt.close(fig)
 
     # plot ordered by 'e'
-    fig2, ax2 = plot_resonance_for_autapse_param(param_df, frequencies, bands, ["e"])
+    fig, ax, _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands1, ["e"])
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_by_e.png")
-
+    plt.close(fig)
     
     # plot ordered by 'f'
-    fig3, ax3 = plot_resonance_for_autapse_param(param_df, frequencies, bands, ["f"])
+    fig, ax, _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands1, ["f"])
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_by_f.png")
-
+    plt.close(fig)
 
     # plot ordered by 'tau'
-    fig4, ax4 = plot_resonance_for_autapse_param(param_df, frequencies, bands, ["tau"])
+    fig, ax, _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands1, ["tau"])
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_by_tau.png")
+    plt.close(fig)
 
-
-    fig4, ax4 = plot_resonance_for_autapse_param(param_df, frequencies, bands, ["e", "f"])
+    fig, ax, _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands1, ["e", "f"])
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_by_e_f.png")
+    plt.close(fig)
 
+    """ Three pulse tests """
 
+    fig, ax, _ = plot_resonance_map(frequencies2, bands2, title = 'Resonance map for three-pulse protocol')
+    if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_3pulses_unordered.png")
+    plt.close(fig)
+
+    fig, ax, _ = plot_resonance_for_autapse_param(param_df, frequencies2, bands2, ["e", "f"], title = 'Resonance map for three-pulse protocol ordered by')
+    if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_3pulses_by_e_f.png")
+    plt.close(fig)
+
+    fig, ax, im = plot_resonance_map(frequencies2, num_spikes_three_pulses, title = 'Number of spikes emitted by \nthe 3-pulse protocol')
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Number of spikes produced")
+    if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_num_spikes_unordered.png")
+    plt.close(fig)
+
+    fig, ax, im = plot_resonance_for_autapse_param(param_df, frequencies2, num_spikes_three_pulses, ['e', 'f'], title = 'Number of spikes emitted by \nthe 3-pulse protocol')
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label("Number of spikes produced")
+    if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_num_spikes_by_e_f.png")
+    plt.close(fig)
+    
+    
     """ Test 2 plots """
 
     #Spike to pulse ratios

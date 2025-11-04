@@ -71,13 +71,15 @@ def sim(args, conf):
     ## 1st test: 2 pulses, each produce a spike. What is the timing of the second pulse?
     # frequencies:      shape (N_freq, ), frequencies of the pulse relative to the spike
     # bands:            shape (N_neurons, N_freq), for each neuron, when 2 spikes were emitted
-    frequencies, bands, pulse_height, time_to_spike = first_test(conf, N_neurons, params_arr)
-
-    resonance_bands_base_neuron = get_resonance_bands(frequencies, bands[0, :]) # idx 0 is the base neuron
+    frequencies1, bands1, pulse_height, time_to_spike = first_test(conf, N_neurons, params_arr)
+    resonance_bands_base_neuron = get_resonance_bands(frequencies1, bands1[0, :]) # idx 0 is the base neuron
 
     largest_band_idx = np.argmax(np.diff(resonance_bands_base_neuron, axis = 1))
     peak_resonance = np.mean(resonance_bands_base_neuron[largest_band_idx])
     print(f"Peak Resonance: {peak_resonance}")
+
+    # 3 pulse test
+    frequencies2, bands2, num_spikes_three_pulses = three_pulse_test(conf, N_neurons, params_arr) 
 
     ## 2nd test: a train of pulses all equally spaced. We want to see if a spike occurrs on subsequent pulses
     N_pulses, multipulse_freq, num_spikes, spike_freq, spike_times, pulse_starts = second_test(conf, N_neurons, params_arr, peak_resonance, pulse_height+10, time_to_spike)
@@ -88,7 +90,8 @@ def sim(args, conf):
 
     # At this stage just save the outputs
     results_dict = {"Parameters": params_arr,
-                    "Simulation 1": {"frequencies": frequencies, "bands": bands},
+                    "Simulation 1": {"frequencies": frequencies1, "bands": bands1},
+                    "Three pulses": {"frequencies": frequencies2, "bands": bands2, "num_spikes": num_spikes_three_pulses},
                     "Simulation 2": {"multipulse_freq": multipulse_freq, "num_spikes": num_spikes, "spike_freq": spike_freq, "spike_times": spike_times, "pulse_starts": pulse_starts}}
 
     # save the results dict as a pickle
@@ -243,16 +246,6 @@ def three_pulse_test(conf, N_neurons, params_arr):
 
     X, T, spikes = batch1.update_batch(dt, N_iter, I_inj)
 
-    print(f"spikes: {np.shape(spikes)}")
-
-    # test plot
-    idx = 4000
-    freq_idx = int(idx/N_neurons)
-    print(f"frequency: {freq_range[freq_idx]}")
-    print(f"ISI: {1000/freq_range[freq_idx]}")
-
-    fig, ax = plot_potential_versus_injected(X[idx, :], T, I_inj[idx])
-    plt.show()
 
     # get resonance bands
     pulse2_start  = np.zeros(N_sims)
@@ -271,7 +264,7 @@ def three_pulse_test(conf, N_neurons, params_arr):
     bands = spike_boolean.reshape((N_neurons, N_freq), order = 'F') # where 2 spikes were generated. Maps to the frequencies.
     num_spikes = num_spikes.reshape((N_neurons, N_freq), order = 'F')
     
-    return freq_range, bands, num_spikes, pulse_height, time_to_spike
+    return freq_range, bands, num_spikes
 
 
 
