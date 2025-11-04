@@ -58,11 +58,6 @@ def find_threshold(neuron_params, I_list, T, dt):
 
     idx_threshold = np.argwhere(np.isnan(spikes[:, 0]).flatten())[-1]
 
-    split = np.arange(0, N_iter)
-    print(np.shape(X[idx_threshold].reshape((3, N_iter))))
-    fig, ax = plot_membrane_variables(X[idx_threshold, :].reshape((3, N_iter)), T, split = split)
-    plt.show()
-
     threshold = I_list_thresh[idx_threshold][0] # closer estimate of the threshold
     steady_state = X[idx_threshold, :, -1][0]
     
@@ -233,13 +228,14 @@ def get_resonance_bands(resonant_f, spike_boolean):
     
     """
     spike_boolean = spike_boolean.astype(int)
+    # sort frequencies in descending order
+    resonant_f = np.sort(resonant_f)
+    resonant_f = resonant_f[::-1]
+
     band_limits = np.diff(spike_boolean, prepend = 0, append = 0)
 
     band_starts = np.where(band_limits == -1)[0]-1
     band_ends = np.where(band_limits == 1)[0]
-    print("Bands")
-    print(band_starts)
-    print(band_ends)
 
     frequency_bands = np.zeros((len(band_starts), 2))
 
