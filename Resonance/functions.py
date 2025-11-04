@@ -244,7 +244,7 @@ def get_resonance_bands(resonant_f, spike_boolean):
 
 """- - - - PLOTTING FUNCTIONS - - - - """
 
-def plot_resonance_map(frequencies, bands):
+def plot_resonance_map(frequencies, bands, title = 'Resonance Map of neurons'):
     """
     Returns a heat map of the resonance frequencies of the neurons
 
@@ -259,16 +259,16 @@ def plot_resonance_map(frequencies, bands):
 
     fig, ax = plt.subplots(1, 1, figsize = (8, 8))
 
-    ax.imshow(bands, origin = 'lower', cmap = 'Greys', extent = [frequencies[0], frequencies[-1], 0, np.shape(bands)[0]])
+    im = ax.imshow(bands, origin = 'lower', cmap = 'Greys', aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, np.shape(bands)[0]])
 
     ax.set_xlabel('Frequency (Hz)', fontsize = 16)
     ax.set_ylabel('Neuron index', fontsize = 16)
 
-    ax.set_title('Resonance Map of neurons', fontsize = 20)
+    ax.set_title(title, fontsize = 20)
 
-    return fig, ax
+    return fig, ax, im
 
-def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_params):
+def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_params, title = 'Resonance Map of neurons ordered by'):
     """
     Plots the resonance properties of neurons for a given autapse parameter.
     Y label only shows the first parameter value sorting the list.
@@ -302,7 +302,7 @@ def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_param
 
     fig, ax = plt.subplots(1, 1, figsize = (8, 8))
 
-    ax.imshow(bands[sorted_indices, :], origin = 'lower', cmap = 'Greys', aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, len(param_values)])
+    im = ax.imshow(bands[sorted_indices, :], origin = 'lower', cmap = 'Greys', aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, len(param_values)])
     ax.set_xlabel('Frequency (Hz)', fontsize = 16)
     ax.set_ylabel(f'{autapse_params[0]} value', fontsize = 16)
     cumsum = np.insert(cumsum, 0, 0.)
@@ -314,10 +314,10 @@ def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_param
     ax.set_xlim((xmin, xmax))
     ax.hlines(y = np.cumsum(num_neurons_with_param), xmin = xmin, xmax = xmax, colors = "grey", linestyles = "dashed")
 
-    ax.set_title(f'Resonance Map of neurons ordered by {autapse_params}', fontsize = 20)
+    ax.set_title(f'{title} {autapse_params}', fontsize = 20)
     #ax.legend()
 
-    return fig, ax
+    return fig, ax, im
 
 """ SIMULATION 2 PLOTS"""
 # Plots of the spike to pulse ratio from simulation 2
@@ -650,7 +650,6 @@ def plot_total_spikes(num_spikes, multipulse_freq, param_df, param_order = []):
                             pulse frequencies sampled.
     """
     N_freq = np.shape(multipulse_freq)[0]
-    print(f"N_freq: {N_freq}")
 
     min_spikes = np.min(num_spikes)
     max_spikes = np.max(num_spikes)
