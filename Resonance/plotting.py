@@ -28,7 +28,6 @@ def plot(args, conf):
     params = dict["Parameters"]
     param_df = pd.DataFrame(params)
 
-
     # test 1
     test1_plots(dict, conf, param_df, args)
 
@@ -103,20 +102,20 @@ def three_pulse_plots(dict, conf, param_df, args):
     plt.close(fig)
 
     fig, ax, im = plot_resonance_map(frequencies2, num_spikes_three_pulses, title = 'Number of spikes emitted by \nthe 3-pulse protocol')
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Number of spikes produced")
+    #cbar = fig.colorbar(im, ax=ax)
+    #cbar.set_label("Number of spikes produced")
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_num_spikes_unordered.png")
     plt.close(fig)
 
     fig, ax, im = plot_resonance_for_autapse_param(param_df, frequencies2, num_spikes_three_pulses, ['e', 'f'], title = 'Number of spikes emitted by \nthe 3-pulse protocol')
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Number of spikes produced")
+    #cbar = fig.colorbar(im, ax=ax)
+    #cbar.set_label("Number of spikes produced")
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_num_spikes_by_e_f.png")
     plt.close(fig)
 
     fig, ax, im = plot_resonance_for_autapse_param(param_df, frequencies2, num_spikes_three_pulses, ['tau'], title = 'Number of spikes emitted by \nthe 3-pulse protocol')
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Number of spikes produced")
+    #cbar = fig.colorbar(im, ax=ax)
+    #cbar.set_label("Number of spikes produced")
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_num_spikes_by_tau.png")
     plt.close(fig)
 
@@ -244,5 +243,5 @@ def plot_all_indices(dict, trial_label, params, indices, plot_freq, ref_freq, ou
             fig, ax = plot_potential_versus_injected(X[row_idx], T, I[row_idx])
             fig.suptitle("Membrane potential versus Injected Current", fontweight = 'bold', y = 0.95)
             ax[0].set_title(f"autapse: e = {e}, f = {f}, \u03c4 = {tau}; frequency = {freq_actual}", fontsize = 10)
-            plt.savefig(out_dir + f"\\{trial_label.replace(" ", "_")}_idx{i}_f{freq}.png")
+            plt.savefig(out_dir + f"\\{trial_label.replace(' ', '_')}_idx{i}_f{freq}.png")
 

@@ -80,7 +80,7 @@ def main():
 
 
     """- - - - SIMULATION - - - -"""
-    if args.sim:    # Run the whole simulation if --sim is passed
+    if args.sim and not args.subset:    # Run the whole simulation if --sim is passed, but not --subset
         print("Running simulation...")
         simulation.sim(args, conf)
         print("Simulation complete.")

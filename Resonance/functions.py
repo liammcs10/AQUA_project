@@ -259,10 +259,25 @@ def plot_resonance_map(frequencies, bands, title = 'Resonance Map of neurons'):
 
     fig, ax = plt.subplots(1, 1, figsize = (8, 8))
 
-    im = ax.imshow(bands, origin = 'lower', cmap = 'Greys', aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, np.shape(bands)[0]])
+    unique_vals = np.unique(bands)
+    print(unique_vals)
+    num_vals = len(unique_vals)
+    base_cmap = plt.cm.get_cmap("Greys", num_vals)
+    im = ax.imshow(bands, origin = 'lower', cmap = base_cmap, aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, np.shape(bands)[0]])
+    cbar = fig.colorbar(im, ax = ax, shrink = 0.5)
+    cbar.set_ticks(np.linspace(np.min(unique_vals), np.max(unique_vals), num_vals))
+    cbar.set_ticklabels(unique_vals)
 
     ax.set_xlabel('Frequency (Hz)', fontsize = 16)
     ax.set_ylabel('Neuron index', fontsize = 16)
+
+    # define grid
+    ax.set_xticks(np.arange(0, np.shape(bands)[1], 5), minor = True)
+    ax.set_xticks(np.arange(0, np.shape(bands)[1], 25))
+    ax.set_yticks(np.arange(0, np.shape(bands)[0], 1), minor = True)
+    ax.set_yticks(np.arange(0, np.shape(bands)[0], 5))
+    ax.grid(alpha = 0.4, which = 'minor')
+    ax.grid(alpha = 0.8, which = 'major')
 
     ax.set_title(title, fontsize = 20)
 
@@ -302,7 +317,14 @@ def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_param
 
     fig, ax = plt.subplots(1, 1, figsize = (8, 8))
 
-    im = ax.imshow(bands[sorted_indices, :], origin = 'lower', cmap = 'Greys', aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, len(param_values)])
+    unique_vals = np.unique(bands)
+    num_vals = len(unique_vals)
+    base_cmap = plt.cm.get_cmap("Greys", num_vals)
+    im = ax.imshow(bands[sorted_indices, :], origin = 'lower', cmap = base_cmap, aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, len(param_values)])
+    cbar = fig.colorbar(im, ax = ax, shrink = 0.5)
+    cbar.set_ticks(np.linspace(np.min(unique_vals), np.max(unique_vals), num_vals))
+    cbar.set_ticklabels(unique_vals)
+    
     ax.set_xlabel('Frequency (Hz)', fontsize = 16)
     ax.set_ylabel(f'{autapse_params[0]} value', fontsize = 16)
     cumsum = np.insert(cumsum, 0, 0.)
@@ -315,7 +337,14 @@ def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_param
     ax.hlines(y = np.cumsum(num_neurons_with_param), xmin = xmin, xmax = xmax, colors = "grey", linestyles = "dashed")
 
     ax.set_title(f'{title} {autapse_params}', fontsize = 20)
-    #ax.legend()
+    
+    # define grid
+    ax.set_xticks(np.arange(0, np.shape(bands)[1], 5), minor = True)
+    ax.set_xticks(np.arange(0, np.shape(bands)[1], 25))
+    ax.set_yticks(np.arange(0, np.shape(bands)[0], 1), minor = True)
+    ax.set_yticks(np.arange(0, np.shape(bands)[0], 5))
+    ax.grid(alpha = 0.4, which = 'minor')
+    ax.grid(alpha = 0.8, which = 'major')
 
     return fig, ax, im
 
@@ -512,7 +541,6 @@ def subsequent_spikes(spike_times, pulse_starts, multipulse_freq):
     first_spike = np.nan_to_num(first_spike, nan = 0.0)
     first_spike = first_spike[:, np.newaxis]
 
-
     second_spike = spike_times[:, 1]
     second_spike = np.nan_to_num(second_spike, nan = 0.0)
     second_spike = second_spike[:, np.newaxis]
@@ -540,13 +568,26 @@ def subsequent_spikes(spike_times, pulse_starts, multipulse_freq):
     # Plot the heatmap...
     fig, ax = plt.subplots(1, 1, figsize = (12, 6))
     
-    cax = ax.imshow(subsequent_spikes, origin = 'lower', cmap = "Greys", aspect = 'auto') #, extent = [0, np.shape(num_pulses_to_spike)[1], 0, np.shape(num_pulses_to_spike)[0]])
+    base_cmap = plt.cm.get_cmap("Greys", 2) # 2 colour map
+    cax = ax.imshow(subsequent_spikes, origin = 'lower', cmap = base_cmap, aspect = 'auto') #, extent = [0, np.shape(num_pulses_to_spike)[1], 0, np.shape(num_pulses_to_spike)[0]])
+    cbar = fig.colorbar(cax, ax = ax, shrink = 0.5)
+    ticklabels = ["False", "True"]
+    cbar.set_ticks([0.25, 0.75])
+    cbar.set_ticklabels(ticklabels)
 
-    x_ticks = np.linspace(0, N_freq-1, 6, dtype = int)
-    ax.set_xticks(ticks = x_ticks, labels = np.round(multipulse_freq[x_ticks], 2))
+    #x_ticks = np.linspace(0, N_freq-1, 12, dtype = int)
+    #ax.set_xticks(ticks = x_ticks, labels = np.round(multipulse_freq[x_ticks], 2))
     ax.set_xlabel("Pulse Frequency [Hz]", fontsize = 16)
     ax.set_ylabel("Neuron number", fontsize = 16)
     ax.set_title("Whether the second pulse after a spike, produces a spike", fontsize = 20)
+
+    # define grid
+    ax.set_xticks(np.arange(0, np.shape(subsequent_spikes)[1], 5), minor = True)
+    ax.set_xticks(np.arange(0, np.shape(subsequent_spikes)[1], 25))
+    ax.set_yticks(np.arange(0, np.shape(subsequent_spikes)[0], 1), minor = True)
+    ax.set_yticks(np.arange(0, np.shape(subsequent_spikes)[0], 5))
+    ax.grid(alpha = 0.4, which = 'minor')
+    ax.grid(alpha = 0.8, which = 'major')
     
     return fig, ax
 
@@ -619,14 +660,17 @@ def subsequent_spikes_by_params(spike_times, pulse_starts, multipulse_freq, para
 
     # Plot the heatmap...
     fig, ax = plt.subplots(1, 1, figsize = (12, 6))
-    
-    cax = ax.imshow(subsequent_spikes[sorted_indices, :], origin = 'lower', cmap = "Greys", aspect = 'auto', extent = [0, np.shape(subsequent_spikes)[1], 0, np.shape(subsequent_spikes)[0]])
-
+    base_cmap = plt.cm.get_cmap("Greys", 2) # 2 colour map
+    cax = ax.imshow(subsequent_spikes[sorted_indices, :], origin = 'lower', cmap = base_cmap, aspect = 'auto', extent = [0, np.shape(subsequent_spikes)[1], 0, np.shape(subsequent_spikes)[0]])
+    cbar = fig.colorbar(cax, ax = ax, shrink = 0.5)
+    ticklabels = ["False", "True"]
+    cbar.set_ticks([0.25, 0.75])
+    cbar.set_ticklabels(ticklabels)
     x_ticks = np.linspace(0, N_freq-1, 6, dtype = int)
     ax.set_xticks(ticks = x_ticks, labels = np.round(multipulse_freq[x_ticks], 2))
     ax.set_xlabel("Pulse Frequency [Hz]", fontsize = 16)
     ax.set_ylabel(f"Neuron number ordered by {params[0]}", fontsize = 16)
-    ax.set_title(f"Whether the second pulse after a spike, produces a spike ordered by {params}", fontsize = 20)
+    ax.set_title(f"Whether the pulse after a spike produces a spike (ordered by {params})", fontsize = 20)
 
     cumsum = np.insert(cumsum, 0, 0.)
     tick_loc = (cumsum[:-1] + cumsum[1:])/2.0

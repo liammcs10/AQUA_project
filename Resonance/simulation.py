@@ -192,15 +192,11 @@ def first_test(conf, params_arr, SUBSET):
     for _ in range(N_freq):
         batch1_params += params_arr
 
-    print(len(batch1_params))
-    print(batch1_params[:5])
-
     x_start = np.full((N_sims, 3), fill_value = x_ini)
     t_start = np.zeros(N_sims)
     # define and initialize
     
     batch1 = batchAQUA(batch1_params)
-    print(f"batch size: {batch1.N_models}")
     batch1.Initialise(x_start, t_start)
 
     X, T, spikes = batch1.update_batch(dt, N_iter, I_inj)
@@ -299,7 +295,7 @@ def three_pulse_test(conf, params_arr, SUBSET):
     # get resonance bands
     pulse2_start  = np.zeros(N_sims)
     spike_boolean = np.zeros(N_sims)
-    num_spikes = np.zeros(N_sims)   # will only count number of spikes > 1, otherwise 0
+    num_spikes = np.ones(N_sims)   # will only count number of spikes > 1, otherwise 0
 
     for n in range(N_sims):
         if len(spikes[n, np.isnan(spikes[n])]) != 2:        # if 2 or more spikes generated
@@ -356,11 +352,15 @@ def second_test(conf, params_arr, peak_resonance, pulse_height, time_to_spike, S
     delay = float(conf["Simulation 2"]["delay"])
     pulse_duration = float(conf["Simulation 2"]["pulse_duration"])
     
-    pulse_isi_low = float(conf["Simulation 2"]["isi_low"])
-    pulse_isi_high = float(conf["Simulation 2"]["isi_high"])
-    N_isi = int(conf["Simulation 2"]["N_isi"])
+    pulse_freq_low = float(conf["Simulation 2"]["freq_low"])
+    pulse_freq_high = float(conf["Simulation 2"]["freq_high"])
+    pulse_isi_high = 1000/pulse_freq_low
+    N_freq = int(conf["Simulation 2"]["N_freq"])
 
     assert T*1000 >= delay + pulse_duration + N_pulses*pulse_isi_high, "Multipulse simulation parameters don't fit in the time frame."
+    # create array of frequencies and corresponding ISIs
+    multipulse_freq = np.linspace(pulse_freq_low, pulse_freq_high, N_freq) # (N_isi, )
+    multipulse_ISIs = 1000/multipulse_freq
 
     print("Finding threshold...")
     threshold, x_ini = find_threshold(params_arr[0], np.linspace(0, 500, 100), T, dt)
@@ -371,10 +371,7 @@ def second_test(conf, params_arr, peak_resonance, pulse_height, time_to_spike, S
 
     # get the minimum pulse height that induces a spike if it arrives at the peak resonance frequency.
     pulse2_height = find_2nd_pulse_height(params_arr[0], pulse2_heights, threshold, x_ini, pulse_duration, pulse_height, time_to_spike, pulse_ISI)
-    pulse2_height += 10
-
-    multipulse_ISIs = np.linspace(pulse_isi_low, pulse_isi_high, N_isi) # (N_isi, )
-    multipulse_freq = 1000/multipulse_ISIs
+    pulse2_height -= 10
 
     # get the pulse start times (in ms). Pulse ends is just += pulse_duration
     pulse_starts = np.array([[delay + i*(isi) for i in range(N_pulses)] for isi in multipulse_ISIs])
@@ -385,7 +382,7 @@ def second_test(conf, params_arr, peak_resonance, pulse_height, time_to_spike, S
 
     # Can now setup the batch
     batch_params = []
-    for i in range(N_isi):
+    for i in range(N_freq):
         batch_params += params_arr
     x_start = np.full((N_sims, 3), fill_value = x_ini)
     t_start = np.zeros(N_sims)
@@ -404,14 +401,14 @@ def second_test(conf, params_arr, peak_resonance, pulse_height, time_to_spike, S
     spike_ISI = np.diff(spikes, axis = 1)
     spike_freq = 1000/np.nanmean(spike_ISI, axis = 1)
     spike_freq = np.nan_to_num(spike_freq, nan = 0.0)
-    spike_freq = spike_freq.reshape((N_neurons, N_isi), order = 'F')
+    spike_freq = spike_freq.reshape((N_neurons, N_freq), order = 'F')
 
     # Get the total number of spikes (to compare with the total number of pulses)
     num_spikes = np.zeros(N_sims, dtype = int)
     for i in range(N_sims):
         num_spikes[i] = len(spikes[i, ~np.isnan(spikes[i])])
     
-    num_spikes = num_spikes.reshape((N_neurons, N_isi), order = 'F')
+    num_spikes = num_spikes.reshape((N_neurons, N_freq), order = 'F')
 
     return N_pulses, multipulse_freq, num_spikes, spike_freq, spikes, pulse_starts
 
