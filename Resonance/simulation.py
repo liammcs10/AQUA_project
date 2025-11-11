@@ -27,7 +27,7 @@ For a given set of neuron parameters:
 """
 
 
-def sim(args, conf):
+def sim(args, conf, SUBSET = False):
     """
     Implements the simulation run for data generation.
     Will use a few autapse params but mainly test different step parameters.
@@ -40,8 +40,8 @@ def sim(args, conf):
                 configuration parameters for the simulation
     
     OUTPUT:
-        df:     pandas dataframe
-                saved as a .csv and includes run params
+        file:   dictionary of simulation outcomes
+                saved to output directory specified in config.
 
     """
 
@@ -53,8 +53,6 @@ def sim(args, conf):
     e_vals   = np.array(conf["Autapse"]["e"].split(", "), dtype = np.float64)
     tau_vals = np.array(conf["Autapse"]["tau"].split(", "), dtype = np.float64)
 
-    # calculate the number of neurons
-    N_neurons = 1 + len(f_vals) * len(e_vals) * len(tau_vals)
     # params arr will store all the parameter dictionaries in 1 place.
     params_arr = []
     params_arr.append(params) # index 0, will be the reference non-autaptic neuron
@@ -68,45 +66,82 @@ def sim(args, conf):
                 temp_dict["tau"] = tau
                 params_arr.append(temp_dict)
 
+
     ## 1st test: 2 pulses, each produce a spike. What is the timing of the second pulse?
     # frequencies:      shape (N_freq, ), frequencies of the pulse relative to the spike
     # bands:            shape (N_neurons, N_freq), for each neuron, when 2 spikes were emitted
-    frequencies1, bands1, pulse_height, time_to_spike = first_test(conf, N_neurons, params_arr)
-    resonance_bands_base_neuron = get_resonance_bands(frequencies1, bands1[0, :]) # idx 0 is the base neuron
+    if SUBSET:
 
-    largest_band_idx = np.argmax(np.diff(resonance_bands_base_neuron, axis = 1))
-    peak_resonance = np.mean(resonance_bands_base_neuron[largest_band_idx])
-    print(f"Peak Resonance: {peak_resonance}")
+        print("Subset passed!")
+        # only extract the parameters we want.
+        indices = np.array(conf["Subset"]["indices"].split(", "), dtype = np.int64)
 
-    # 3 pulse test
-    frequencies2, bands2, num_spikes_three_pulses = three_pulse_test(conf, N_neurons, params_arr) 
+        # Only use the subarray
+        params_arr = np.array(params_arr)
+        params_arr = params_arr[indices]
+        params_arr = params_arr.tolist()
 
-    ## 2nd test: a train of pulses all equally spaced. We want to see if a spike occurrs on subsequent pulses
-    N_pulses, multipulse_freq, num_spikes, spike_freq, spike_times, pulse_starts = second_test(conf, N_neurons, params_arr, peak_resonance, pulse_height+10, time_to_spike)
+        X_test1, T_test1, spikes_test1, I_test1, frequencies1, bands1, pulse_height, time_to_spike = first_test(conf, params_arr, SUBSET)
+
+        resonance_bands_base_neuron = get_resonance_bands(frequencies1, bands1[0, :]) # idx 0 is the base neuron
+        largest_band_idx = np.argmax(np.diff(resonance_bands_base_neuron, axis = 1))
+        peak_resonance = np.mean(resonance_bands_base_neuron[largest_band_idx])
+        print(f"Peak Resonance: {peak_resonance}")
+
+        X_3pulse, T_3pulse, spikes_3pulse, I_3pulse = three_pulse_test(conf, params_arr, SUBSET)
+
+        X_test2, T_test2, spikes_test2, I_test2 = second_test(conf, params_arr, peak_resonance, pulse_height+10, time_to_spike, SUBSET)
     
-    spike_to_pulse_ratio = num_spikes / N_pulses
-    spike_to_pulse_freq_ratio = spike_freq / multipulse_freq
+        results_dict = {"Parameters": params_arr,
+                        "Simulation 1": {"X": X_test1, "T": T_test1, "spikes": spikes_test1, "I": I_test1},
+                        "Three pulses": {"X": X_3pulse, "T": T_3pulse, "spikes": spikes_3pulse, "I": I_3pulse},
+                        "Simulation 2": {"X": X_test2, "T": T_test2, "spikes": spikes_test2, "I": I_test2}}
+                
+        # save the results dict as a pickle
+        output_directory = conf["Output"]["out_dir"]
+        output_data_file = conf["Output"]["data_file"]
+        out_filename = output_data_file[:-7] + "_subset" + output_data_file[-7:]
+        output_path = output_directory + "\\" + out_filename
+        with open(output_path, 'wb') as f:
+            pickle.dump(results_dict, f)
+    
+    else:
+        frequencies1, bands1, pulse_height, time_to_spike = first_test(conf, params_arr, SUBSET)
+        resonance_bands_base_neuron = get_resonance_bands(frequencies1, bands1[0, :]) # idx 0 is the base neuron
+
+        largest_band_idx = np.argmax(np.diff(resonance_bands_base_neuron, axis = 1))
+        peak_resonance = np.mean(resonance_bands_base_neuron[largest_band_idx])
+        print(f"Peak Resonance: {peak_resonance}")
+
+        # 3 pulse test
+        frequencies2, bands2, num_spikes_three_pulses = three_pulse_test(conf, params_arr, SUBSET) 
+
+        ## 2nd test: a train of pulses all equally spaced. We want to see if a spike occurrs on subsequent pulses
+        N_pulses, multipulse_freq, num_spikes, spike_freq, spike_times, pulse_starts = second_test(conf, params_arr, peak_resonance, pulse_height+10, time_to_spike, SUBSET)
+        
+        spike_to_pulse_ratio = num_spikes / N_pulses
+        spike_to_pulse_freq_ratio = spike_freq / multipulse_freq
 
 
-    # At this stage just save the outputs
-    results_dict = {"Parameters": params_arr,
-                    "Simulation 1": {"frequencies": frequencies1, "bands": bands1},
-                    "Three pulses": {"frequencies": frequencies2, "bands": bands2, "num_spikes": num_spikes_three_pulses},
-                    "Simulation 2": {"multipulse_freq": multipulse_freq, "num_spikes": num_spikes, "spike_freq": spike_freq, "spike_times": spike_times, "pulse_starts": pulse_starts}}
+        # At this stage just save the outputs
+        results_dict = {"Parameters": params_arr,
+                        "Simulation 1": {"frequencies": frequencies1, "bands": bands1},
+                        "Three pulses": {"frequencies": frequencies2, "bands": bands2, "num_spikes": num_spikes_three_pulses},
+                        "Simulation 2": {"multipulse_freq": multipulse_freq, "num_spikes": num_spikes, "spike_freq": spike_freq, "spike_times": spike_times, "pulse_starts": pulse_starts}}
 
-    # save the results dict as a pickle
-    output_directory = conf["Output"]["out_dir"]
-    output_data_file = conf["Output"]["data_file"]
-    output_path = output_directory + "\\" + output_data_file
-    with open(output_path, 'wb') as f:
-        pickle.dump(results_dict, f)
+        # save the results dict as a pickle
+        output_directory = conf["Output"]["out_dir"]
+        output_data_file = conf["Output"]["data_file"]
+        output_path = output_directory + "\\" + output_data_file
+        with open(output_path, 'wb') as f:
+            pickle.dump(results_dict, f)
     
 
 """ - - - - SIMULATION FUNCTIONS - - - - """
 
 """  TWIN PULSES  """
 
-def first_test(conf, N_neurons, params_arr):
+def first_test(conf, params_arr, SUBSET):
     """
     Simulates 2 pulses that generate a spike alone. Extracts the resonance bands for each neuron type.
 
@@ -120,6 +155,8 @@ def first_test(conf, N_neurons, params_arr):
     T = float(conf['Simulation 1']['T'])        # needs to be in ms
     dt = float(conf['Simulation 1']['dt'])      # ms
     N_iter = int(1000*T/dt)                          # number of iterations
+
+    N_neurons = np.shape(params_arr)[0]
 
     print("Finding threshold...")
     threshold, x_ini = find_threshold(params_arr[0], np.linspace(0, 500, 100), T, dt)
@@ -152,16 +189,22 @@ def first_test(conf, N_neurons, params_arr):
 
     # define batch now that we know how many simulations are run
     batch1_params = []
-    for i in range(N_freq):
+    for _ in range(N_freq):
         batch1_params += params_arr
+
+    print(len(batch1_params))
+    print(batch1_params[:5])
+
     x_start = np.full((N_sims, 3), fill_value = x_ini)
     t_start = np.zeros(N_sims)
     # define and initialize
-
+    
     batch1 = batchAQUA(batch1_params)
+    print(f"batch size: {batch1.N_models}")
     batch1.Initialise(x_start, t_start)
 
     X, T, spikes = batch1.update_batch(dt, N_iter, I_inj)
+
 
     pulse2_start  = np.zeros(N_sims)
     spike_boolean = np.zeros(N_sims)
@@ -181,11 +224,13 @@ def first_test(conf, N_neurons, params_arr):
     
     bands = spike_boolean.reshape((N_neurons, N_freq), order = 'F') # where 2 spikes were generated. Maps to the frequencies.
     
-    
+    if SUBSET:
+        return X, T, spikes, I_inj, resonant_f, bands, pulse_height, time_to_spike
+    # else
     return resonant_f, bands, pulse_height, time_to_spike
 
 
-def three_pulse_test(conf, N_neurons, params_arr):
+def three_pulse_test(conf, params_arr, SUBSET):
     """
     Simulates 3 pulses. First pulse generates a spike, last 2 pulses are subthreshold and test resonance.
 
@@ -198,7 +243,9 @@ def three_pulse_test(conf, N_neurons, params_arr):
     # Define the simulation params
     T = float(conf['Simulation 1']['T'])        # needs to be in ms
     dt = float(conf['Simulation 1']['dt'])      # ms
-    N_iter = int(1000*T/dt)                          # number of iterations
+    N_iter = int(1000*T/dt)                     # number of iterations
+
+    N_neurons = np.shape(params_arr)[0]
 
     print("Finding threshold...")
     threshold, x_ini = find_threshold(params_arr[0], np.linspace(0, 500, 100), T, dt)
@@ -246,6 +293,8 @@ def three_pulse_test(conf, N_neurons, params_arr):
 
     X, T, spikes = batch1.update_batch(dt, N_iter, I_inj)
 
+    if SUBSET:      # SUBSET, then we only want the traces.
+        return X, T, spikes, I_inj
 
     # get resonance bands
     pulse2_start  = np.zeros(N_sims)
@@ -270,7 +319,7 @@ def three_pulse_test(conf, N_neurons, params_arr):
 
 """  MULTIPULSE TEST  """
 
-def second_test(conf, N_neurons, params_arr, peak_resonance, pulse_height, time_to_spike):
+def second_test(conf, params_arr, peak_resonance, pulse_height, time_to_spike, SUBSET):
     """
     The second test is a train of equally spaced, identical pulses. 
     We want to extract information about how reliable the response spiking is.
@@ -299,6 +348,8 @@ def second_test(conf, N_neurons, params_arr, peak_resonance, pulse_height, time_
     T = float(conf['Simulation 2']['T'])        # needs to be in ms
     dt = float(conf['Simulation 2']['dt'])      # ms
     N_iter = int(1000*T/dt)                          # number of iterations
+
+    N_neurons = np.shape(params_arr)[0]
 
     # import simulation config.
     N_pulses = int(conf["Simulation 2"]["N_pulses"])
@@ -345,6 +396,9 @@ def second_test(conf, N_neurons, params_arr, peak_resonance, pulse_height, time_
 
     #simulate
     X, T, spikes = batch.update_batch(dt, N_iter, I_multi)
+
+    if SUBSET:      # SUBSET, then we only want the traces.
+        return X, T, spikes, I_multi
 
     # get the mean frequency of spiking (to compare with mean frequency of pulses)
     spike_ISI = np.diff(spikes, axis = 1)

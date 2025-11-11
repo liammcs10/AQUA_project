@@ -36,12 +36,12 @@ def main():
     ----------
     sim     :   action
                 whether to generate data or not
+    plot    :   action
+                whether to generate plots
+    subset  :   str
+                string with indices of subset of params, separated by a comma.
     config  :   str
                 config file name
-    pickle  :   str
-                data filename if no sim run.
-    out     :   str
-                output filename
     save    :   action
                 whether to save the output plots    
     
@@ -77,11 +77,11 @@ def main():
     except FileExistsError:
         print("Output folder already exists")
         pass
-    
+
+
     """- - - - SIMULATION - - - -"""
     if args.sim:    # Run the whole simulation if --sim is passed
         print("Running simulation...")
-
         simulation.sim(args, conf)
         print("Simulation complete.")
     
@@ -90,9 +90,15 @@ def main():
     if args.plot:
         print("Plotting outputs...")
         plotting.plot(args, conf)
-
         print("Plotting complete.")
-    
+
+    """Re-run on subset of parameters"""
+    if args.subset:
+        print("Extracting subset...")
+        if args.sim:
+            simulation.sim(args, conf, SUBSET = True)
+
+        plotting.plot_subset(args, conf)
 
 
 
