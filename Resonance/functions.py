@@ -513,7 +513,6 @@ def pulses_to_spike(spike_times, pulse_starts, multipulse_freq):
     ax.set_ylabel("Neuron number", fontsize = 16)
     ax.set_title("Number of pulses to produce a spike", fontsize = 20)
 
-
     return fig, ax
 
 
