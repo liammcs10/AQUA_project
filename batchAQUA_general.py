@@ -114,7 +114,6 @@ class batchAQUA:
         X = np.zeros((self.N_models, 3, N_iter), dtype = np.float64)
         X[:, :, 0] = self.x    # (N_models, 3, 1)
 
-        #T = np.linspace(0, (N_iter - 1) * dt, N_iter)
         T = np.zeros((self.N_models, N_iter))
         T[:, 0] = self.t    # initialisation value
         spike_times = [[] for _ in range(self.N_models)]
