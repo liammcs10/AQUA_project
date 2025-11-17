@@ -65,10 +65,10 @@ def compare_trains(X1, X2, T, I, indices = []):
     # X1 and X2 are membrane variable values
     # T is just the time
     # I is the injected current
-    # range = [low, high] is the range for plotting to zoom in.
+    # range = np.arange(low, high] is the range for plotting to zoom in.
     
     #plot
-    if indices == None:
+    if len(indices) == 0:
         indices = range(0, len(T))
 
     fig, ax = plt.subplots(3, 1, figsize = (10, 5))
@@ -87,6 +87,93 @@ def compare_trains(X1, X2, T, I, indices = []):
     ax[2].set_xlabel('Time [s]')
     ax[2].set_ylabel('v [mV]')
     ax[2].legend()
+
+    return fig, ax
+
+
+def plot_bifurcation_I(spikes, I_range, steady_state = True):
+    """
+    Plots the steady-state or instantaneous ISIs versus injected current. 
+    
+    INPUT:
+        spikes:         ndarray of spike times
+                        each row is a different simulation
+        I_range:        array
+                        injected currents
+        steady_state:   boolean
+                        True if steady state ISIs, otherwise instantaneous
+    
+    OUTPUT:
+        fig, ax:        matplotlib obj
+    
+    """
+    fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+    for i in range(np.shape(spikes)[0]):
+        spike_times = spikes[i, ~np.isnan(spikes[i])] # get row and remove nan values
+        if steady_state:
+            subSpikes = spike_times[-int(0.5*len(spike_times)):] # last half of spikes
+        else: # if instantaneous is desired
+            subSpikes = spike_times[:int(0.5*len(spike_times))]  # first half of spikes
+        
+        ISI = np.diff(subSpikes)
+        isi_vals, isi_counts = np.unique(np.round(ISI, decimals = 4), return_counts = True)
+        ax.scatter(I_range[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, c = 'black', s = 0.8, marker = "o")
+
+    ax.set_title("Bifurcation diagram")
+    ax.set_ylabel("ISIs [ms]")
+    ax.set_xlabel("Driving current [pA]")
+    return fig, ax
+
+def plot_bifurcation_f(spikes, f_range, steady_state = True):
+    """
+    Plots the steady-state or instantaneous ISIs versus injected current. 
+    
+    INPUT:
+        spikes:         ndarray of spike times
+                        each row is a different simulation
+        f_range:        array
+                        frequency of stimulus
+        steady_state:   boolean
+                        True if steady state ISIs, otherwise instantaneous
+    
+    OUTPUT:
+        fig, ax:        matplotlib obj
+    
+    """
+    fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+    for i in range(np.shape(spikes)[0]):
+        spike_times = spikes[i, ~np.isnan(spikes[i])] # get row and remove nan values
+        if steady_state:
+            subSpikes = spike_times[-int(0.5*len(spike_times)):] # last half of spikes
+        else: # if instantaneous desired
+            subSpikes = spike_times[:int(0.5*len(spike_times))]  # first half of spikes
+        
+        ISI = np.diff(subSpikes)
+        isi_vals, isi_counts = np.unique(np.round(ISI, decimals = 4), return_counts = True)
+        ax.scatter(f_range[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, c = 'black', s = 0.8, marker = "o")
+
+    ax.set_title("Bifurcation diagram")
+    ax.set_ylabel("ISIs [ms]")
+    ax.set_xlabel("Driving frequency [Hz]")
+    return fig, ax
+
+def first_return(spikes, fig, ax):
+    """
+    Returns a figure of the first return map for a spike train
+
+    IN:
+        spikes:     time of spikes in ms (1 neuron only)
+    
+    """
+
+    #fig, ax = plt.subplots(1, 1, figsize = (5, 5))
+
+    ISI = np.diff(spikes)
+    ax.scatter(ISI[:-1], ISI[1:], c = 'black', s = 1.5, marker = 'o')
+
+    ax.set_title("First Return Map")
+    ax.set_xlabel("ISI_t")
+    ax.set_ylabel("ISI_t+1")
 
     return fig, ax
 
@@ -274,35 +361,8 @@ def plot_VUtime(X, T, split, I, neuron, N_dim):
     return fig
 
 
-def plot_bifurcation_I(spikes, I_range, steady_state = True):
-    """
-    Plots the steady-state or instantaneous ISIs versus injected current. 
-    
-    INPUT:
-        spikes:         ndarray of spike times
-                        each row is a different simulation
-        I_range:        array
-                        injected currents
-        steady_state:   boolean
-                        True if steady state ISIs, otherwise instantaneous
-    
-    OUTPUT:
-        fig, ax:        matplotlib obj
-    
-    """
-    fig, ax = plt.subplots(1, 1, figsize = (10, 10))
-    for i in range(np.shape(spikes)[0]):
-        spike_times = spikes[i, ~np.isnan(spikes[i])] # get row and remove nan values
-        if steady_state:
-            subSpikes = spike_times[-int(0.5*len(spike_times)):] # last half of spikes
-        else: # if instantaneous is desired
-            subSpikes = spike_times[:int(0.5*len(spike_times))]  # first half of spikes
-        
-        ISI = np.diff(subSpikes)
-        isi_vals, isi_counts = np.unique(np.round(ISI, decimals = 4), return_counts = True)
-        ax.scatter(I_range[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, c = 'black', s = 0.8, marker = "o")
 
-    return fig, ax
+
 
 """
 def animate_train(X, T, I, out_dir):
