@@ -60,8 +60,8 @@ def find_threshold(neuron_params, I_list, T, dt):
 
     threshold = I_list_thresh[idx_threshold][0] # closer estimate of the threshold
     steady_state = X[idx_threshold, :, -1][0]
-    
-    return threshold, steady_state
+
+    return threshold, steady_state, X, T, idx_threshold[0]
 
 def find_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration):
     """
