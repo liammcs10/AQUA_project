@@ -312,7 +312,6 @@ def three_pulse_test(conf, params_arr, SUBSET):
     return freq_range, bands, num_spikes
 
 
-
 """  MULTIPULSE TEST  """
 
 def second_test(conf, params_arr, peak_resonance, pulse_height, time_to_spike, SUBSET):
@@ -411,6 +410,93 @@ def second_test(conf, params_arr, peak_resonance, pulse_height, time_to_spike, S
     num_spikes = num_spikes.reshape((N_neurons, N_freq), order = 'F')
 
     return N_pulses, multipulse_freq, num_spikes, spike_freq, spikes, pulse_starts
+
+""" - - - - HAZEM'S PROTOCOL - - - - """
+def hazems_test(conf, params_arr, SUBSET):
+    """
+    Simulates 3 pulses. First pulse generates a spike, last 2 pulses are subthreshold and test resonance.
+
+    RETURNS:
+        resonant_f:         The frequency of the pulse relative to the time of the spike
+        bands:              When 2 spikes were generated or not, index matched to resonant_ISI
+    
+    """
+    print("Hazem's protocol...")
+    # Define the simulation params
+    T = float(conf['Simulation 1']['T'])        # needs to be in ms
+    dt = float(conf['Simulation 1']['dt'])      # ms
+    N_iter = int(1000*T/dt)                     # number of iterations
+
+    N_neurons = np.shape(params_arr)[0]
+
+    print("Finding threshold...")
+    threshold, x_ini = find_threshold(params_arr[0], np.linspace(0, 500, 100), T, dt)
+    
+    # extract frequencies to investigate
+    freq_start = float(conf["Simulation 1"]["freq_start"])
+    freq_stop = float(conf["Simulation 1"]["freq_stop"])
+    N_freq = int(conf["Simulation 1"]["N_freq"])
+    freq_range = np.linspace(freq_start, freq_stop, N_freq)
+
+
+    # pulse properties
+    pulse_duration = float(conf["Simulation 1"]["pulse_duration"])
+    N_pulses = 3    
+    delay = float(conf["Simulation 1"]["delay"])          # ms
+    pulse1_end = delay + pulse_duration
+
+    print("Finding pulse height...")
+    # the height of the pulse which produces a spike and the relative timing of the spike.
+    pulse_height, pulse_height2, time_to_spike = find_pulse_height(params_arr[0], np.linspace(100, 1000, 100), threshold, x_ini, pulse_duration)
+    #pulse_height2 = pulse_height - 2 # second pulse is slightly weaker
+    pulse_heights = [pulse_height, pulse_height2, pulse_height2]
+
+    # define the frequency of the pulses relative to the spike timing.
+    ISI_range = np.zeros((N_freq, N_pulses-1))          # will store array of interpulse intervals.
+    ISI_range[:, 0] = time_to_spike + 1000/freq_range   # between 1st and 2nd pulse.
+    ISI_range[:, 1] = 1000/freq_range                   # between 2nd and 3rd
+
+
+    # Define the injected current
+    # structure: 0:N_neurons @ a given isi, increment isi and define N_neurons more neurons...
+    I_inj = np.array([spikes_constant(N_iter, dt, threshold, isi, N_pulses, pulse_heights, pulse_duration, delay) for isi in ISI_range for _ in range(N_neurons)])
+    N_sims = np.shape(I_inj)[0]     # N_neurons x N_isis
+
+    # define batch now that we know how many simulations are run
+    batch1_params = []
+    for i in range(N_freq):
+        batch1_params += params_arr
+    x_start = np.full((N_sims, 3), fill_value = x_ini)
+    t_start = np.zeros(N_sims)
+    
+    # define and initialize
+    batch1 = batchAQUA(batch1_params)
+    batch1.Initialise(x_start, t_start)
+
+    X, T, spikes = batch1.update_batch(dt, N_iter, I_inj)
+
+    if SUBSET:      # SUBSET, then we only want the traces.
+        return X, T, spikes, I_inj
+
+    # get resonance bands
+    pulse2_start  = np.zeros(N_sims)
+    spike_boolean = np.zeros(N_sims)
+    num_spikes = np.ones(N_sims)   # will only count number of spikes > 1, otherwise 0
+
+    for n in range(N_sims):
+        if len(spikes[n, np.isnan(spikes[n])]) != 2:        # if 2 or more spikes generated
+            spike_boolean[n] = 1                                    # register successful run.
+            num_spikes[n] = len(spikes[n, ~np.isnan(spikes[n])])     # actual number of spikes can be 2 or 3, else 0.
+
+        pulse_times = np.argwhere(I_inj[n, :] > threshold) * dt                     # pulse times in ms
+        pulse2_start[n] = pulse_times[np.where(pulse_times > pulse1_end)][0]        # start time of the second pulse, ms
+
+    
+    bands = spike_boolean.reshape((N_neurons, N_freq), order = 'F') # where 2 spikes were generated. Maps to the frequencies.
+    num_spikes = num_spikes.reshape((N_neurons, N_freq), order = 'F')
+    
+    return freq_range, bands, num_spikes
+
 
 
 
