@@ -5,37 +5,47 @@ A batch simulation version of the AQUA class.
 """
 
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 
 class batchAQUA:
 
-    def __init__(self, params_list):
+    def __init__(self, params_df):
         """
         A copy of the AQUA_general class optimized for batch simulations. 
         
         IN
-            params_list:    list of dictionaries 
+            params_list:    pd.DataFrame or casteable 
                             each dict represents 1 set of neuron params
                             keys correspond to parameter names
         
-        Creates a set of N neuron models with the params needed.
+        Neuron params: {'name', 'C', 'k', 'v_r', 'v_t', 'v_peak', 'a', 'b', 'c', 'd'
+                        'e', 'f', 'tau'}
+
+
+        Creates a batch of N neuron models with the params.
 
         """
-        self.N_models = len(params_list)
-        self.name = np.array([p['name'] for p in params_list])
+        # convert params_list to pandas dataframe
+        if not isinstance(params_df, pd.DataFrame):
+            params_df = pd.DataFrame(params_df)
+
+        self.N_models = len(params_df)
+        self.name = params_df['name'].to_numpy(dtype = str)
+        print(self.name)
         self.isFS = (np.char.find(self.name, "FS")!=-1)     # bool array, where the neuron is of FS type.
-        self.k = np.array([p['k'] for p in params_list])
-        self.C = np.array([p['C'] for p in params_list])
-        self.v_r = np.array([p['v_r'] for p in params_list])
-        self.v_t = np.array([p['v_t'] for p in params_list])
-        self.v_peak = np.array([p['v_peak'] for p in params_list])
-        self.a = np.array([p['a'] for p in params_list])
-        self.b = np.array([p['b'] for p in params_list])
-        self.c = np.array([p['c'] for p in params_list])
-        self.d = np.array([p['d'] for p in params_list])
-        self.e = np.array([p['e'] for p in params_list])
-        self.f = np.array([p['f'] for p in params_list])
-        self.tau = np.array([p['tau'] for p in params_list])
+        self.k = params_df['k'].to_numpy(dtype = np.float64)
+        self.C = params_df['C'].to_numpy(dtype = np.float64)
+        self.v_r = params_df['v_r'].to_numpy(dtype = np.float64)
+        self.v_t = params_df['v_t'].to_numpy(dtype = np.float64)
+        self.v_peak = params_df['v_peak'].to_numpy(dtype = np.float64)
+        self.a = params_df['a'].to_numpy(dtype = np.float64)
+        self.b = params_df['b'].to_numpy(dtype = np.float64)
+        self.c = params_df['c'].to_numpy(dtype = np.float64)
+        self.d = params_df['d'].to_numpy(dtype = np.float64)
+        self.e = params_df['e'].to_numpy(dtype = np.float64)
+        self.f = params_df['f'].to_numpy(dtype = np.float64)
+        self.tau = params_df['tau'].to_numpy(dtype = np.float64)
         #self.E_syn = np.array([p['E_syn'] for p in params_list])
 
         self.x = np.zeros((self.N_models, 3))
