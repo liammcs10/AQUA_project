@@ -8,6 +8,7 @@ e.g.
 
 """
 import numpy as np
+from collections.abc import Sequence
 
 
 
@@ -85,22 +86,38 @@ def spikes_from_dist(inverse_cdf, N_iter, dt, seed = None):
 
     return I.astype(int), x
 
-def spikes_constant(N_iter, dt, y_0, ISI, N_spikes, spike_height, spike_duration = 1, delay = 500):
+def spikes_constant(N_iter, dt, y_0, ISI, N_spikes, spike_heights, spike_duration = 1, delay = 500):
     """
-    Create an input spike train (of N_spikes) with a fixed ISI, T.
+    Create an input spike train (of N_spikes) with a variable ISI and heights
     """
+    # check ISI is iterable
+    if isinstance(ISI, (Sequence, np.ndarray)) and not isinstance(ISI, str):
+        N_isi = len(ISI)
+    else:   # if only a scalar is passed
+        N_isi = 1
+        ISI = np.array([ISI])
+
+
+    # check pulse heights is an iterable
+    if isinstance(spike_heights, Sequence) and not isinstance(spike_heights, str):
+        N_heights = len(spike_heights)
+    else:   # if only a scalar is passed
+        N_heights = 1
+        spike_heights = np.array([spike_heights])
     
+
     I = y_0 * np.ones(N_iter)
 
     delay_steps = int(delay/dt)
-    ISI_steps = int(ISI/dt)
+    ISI_steps = (ISI/dt).astype(int)
     spike_duration_steps = int(spike_duration/dt)
 
-    #pulse_times = np.arange(stop = ISI*N_spikes, step = ISI)
-    #print(pulse_times)
+    pulse_start_count = 0       # will track where each pulse should start
     for i in range(N_spikes):
-        I[delay_steps + i*ISI_steps: delay_steps + i*ISI_steps + spike_duration_steps] += spike_height
-    
+        pulse_num = i%N_heights
+        isi_num = i%N_isi
+        I[delay_steps + pulse_start_count: delay_steps + pulse_start_count + spike_duration_steps] += spike_heights[pulse_num]
+        pulse_start_count += ISI_steps[isi_num]
 
     return I
 
