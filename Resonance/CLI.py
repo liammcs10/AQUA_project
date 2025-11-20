@@ -6,6 +6,8 @@ def command_line():
                                     epilog = 'Author: L. McSweeney, 2025, UoS')
 
     parser.add_argument('--sim', help='Whether to run simulation', action = 'store_true')
+    parser.add_argument('--plot', help='Whether to plot outputs', action = 'store_true')
+    parser.add_argument('--subset', help = 'Whether to plot traces of a subset of runs', action = 'store_true')
     parser.add_argument('--config', help='Configuration file for the simulation', type = str)
     #parser.add_argument('--outfile', help='output filename as .pickle. Also used for plotting.', type = str)
     #parser.add_argument('-o', '--out', help='output file name', type = str)

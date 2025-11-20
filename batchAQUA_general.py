@@ -108,15 +108,14 @@ class batchAQUA:
 
         delay_steps = (self.tau / dt).astype(int)
 
-
         if len(w_prev) == 0:
             w_prev = np.zeros(shape = (self.N_models, np.max(delay_steps))) # assume no prior spikes
-
 
         X = np.zeros((self.N_models, 3, N_iter), dtype = np.float64)
         X[:, :, 0] = self.x    # (N_models, 3, 1)
 
-        T = np.linspace(0, (N_iter - 1) * dt, N_iter)
+        T = np.zeros((self.N_models, N_iter))
+        T[:, 0] = self.t    # initialisation value
         spike_times = [[] for _ in range(self.N_models)]
 
 
@@ -170,6 +169,7 @@ class batchAQUA:
                 spike_times[i].append(self.t[i]) # append the time of spike.
             
             X[:, :, n] = self.x
+            T[:, n] = self.t
 
         spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
     
