@@ -23,7 +23,6 @@ class batchAQUA:
         """
         self.N_models = len(params_list)
         self.name = np.array([p['name'] for p in params_list])
-        self.isFS = (np.char.find(self.name, "FS")!=-1)     # bool array, where the neuron is of FS type.
         self.k = np.array([p['k'] for p in params_list])
         self.C = np.array([p['C'] for p in params_list])
         self.v_r = np.array([p['v_r'] for p in params_list])
@@ -74,9 +73,9 @@ class batchAQUA:
         du = np.zeros(np.shape(u))
         # FS neurons have a nonlinear u-nullcline.
 
-        cond_FS_hyperpolarized = self.isFS & (v < -55)  # is FS and hyperpolarized
-        cond_FS_depolarized = self.isFS & (v >= -55)    # is FS and depolarized 
-        cond_notFS = ~self.isFS # not FS
+        cond_FS_hyperpolarized = (np.char.find(self.name, "FS")!=-1) & (v < -55)  # is FS and hyperpolarized
+        cond_FS_depolarized = (np.char.find(self.name, "FS")!=-1) & (v >= -55)    # is FS and depolarized 
+        cond_notFS = (np.char.find(self.name, "FS")==-1) # not FS
         # update FS neuron
         du[cond_FS_hyperpolarized] = self.a[cond_FS_hyperpolarized] * (-1. * u[cond_FS_hyperpolarized]) # where neuron is FS and v < -55, U = 0
         du[cond_FS_depolarized] = self.a[cond_FS_depolarized] * (0.025 * (v[cond_FS_depolarized] + 55.)**3 - u[cond_FS_depolarized])
@@ -109,15 +108,14 @@ class batchAQUA:
 
         delay_steps = (self.tau / dt).astype(int)
 
-
         if len(w_prev) == 0:
             w_prev = np.zeros(shape = (self.N_models, np.max(delay_steps))) # assume no prior spikes
-
 
         X = np.zeros((self.N_models, 3, N_iter), dtype = np.float64)
         X[:, :, 0] = self.x    # (N_models, 3, 1)
 
-        T = np.linspace(0, (N_iter - 1) * dt, N_iter)
+        T = np.zeros((self.N_models, N_iter))
+        T[:, 0] = self.t    # initialisation value
         spike_times = [[] for _ in range(self.N_models)]
 
 
@@ -171,6 +169,7 @@ class batchAQUA:
                 spike_times[i].append(self.t[i]) # append the time of spike.
             
             X[:, :, n] = self.x
+            T[:, n] = self.t
 
         spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
     
@@ -194,9 +193,6 @@ class batchAQUA:
                 'tau': self.tau[i]}
 
         return dict
-
-
-""" - - - HELPER FUNCTIONS - - - """
 
 def pad_list(lst, pad_value=np.nan, pad_end = True):
     max_length = max(len(sublist) for sublist in lst)

@@ -1,5 +1,10 @@
 """
-A batch simulation version of the AQUA class. 
+A batch simulation version of the AQUA class designed to run on Nvidia GPUs 
+
+Ways to improve:
+
+    - define a Cupy custom kernel which removes the need for a loop over timesteps!!!
+
 
 
 """
@@ -24,9 +29,8 @@ class batchAQUA_GPU:
         """
         self.N_models = len(params_list)
         # store the indices where an 'FS' neuron is being simulated.
-        names = np.array([p['name'] for p in params_list])
-        self.name = cp.asarray(names)
-        whereFS = (np.char.find(names, "FS")!=-1)     # boolean array storing where an FS neuron is simulated
+        self.name = np.array([p['name'] for p in params_list])
+        whereFS = (np.char.find(self.name, "FS")!=-1)     # boolean array storing where an FS neuron is simulated
         self.isFS = cp.asarray(whereFS)
         self.k = cp.array([p['k'] for p in params_list])
         self.C = cp.array([p['C'] for p in params_list])
@@ -44,6 +48,7 @@ class batchAQUA_GPU:
 
         self.x = cp.zeros((self.N_models, 3))
         self.t = cp.zeros(self.N_models)
+        self.T_FULL = False     # whether to generate a full (N_neurons, N_iter) ndarray of times
     
     def Initialise(self, x_start, t_start):
         """
@@ -56,6 +61,8 @@ class batchAQUA_GPU:
         """
         self.x = cp.array(x_start, dtype = np.float64)
         self.t = cp.array(t_start, dtype = np.float64)
+
+        if np.unique(t_start) != 1: self.T_FULL = True
     
     def neuron_model(self, x, w_delay, I):
         """
@@ -121,14 +128,16 @@ class batchAQUA_GPU:
         
 
         if len(w_prev) == 0:
-            w_prev = cp.zeros(shape = (self.N_models, cp.max(delay_steps))) # assume no prior spikes
+            w_prev = cp.zeros(shape = (self.N_models, int(cp.max(delay_steps)))) # assume no prior spikes
 
 
         X = cp.zeros((self.N_models, 3, N_iter), dtype = np.float64)
         X[:, :, 0] = self.x    # (N_models, 3, 1)
 
-        T = cp.linspace(0, (N_iter - 1) * dt, N_iter)
-        spike_times = [[] for _ in range(self.N_models)]
+        T = cp.linspace(0, N_iter*dt, N_iter)
+        
+        # makes the GPU speedup redundant...
+        # spike_times = [[] for _ in range(self.N_models)]
 
 
         for n in tqdm(range(1, N_iter)):  # each neuron updated simultaneously with vectorization
@@ -177,22 +186,30 @@ class batchAQUA_GPU:
             self.x[idx, 1] += self.d[idx]
             self.x[idx, 2] += self.f[idx]
             
+            """
             for i in idx[0]: # loop through the indices that have been updated
+                i = int(i)
                 spike_times[i].append(self.t[i]) # append the time of spike.
-            
+            """
+
+            # save updated values.
             X[:, :, n] = self.x
 
-        spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
+        """
+        spike_times_cpu = spike_times.get()         # convert to numpy
+        spike_times_cpu = pad_list(spike_times_cpu)     # create a numpy array of fixed dimension
+        """
 
         # convert all outputs back to numpy/cpu
         X_cpu = X.get()
         T_cpu = T.get()
-        spike_times_cpu = spike_times.get()
+
+        spike_times = get_spike_times(X, T, cp.asnumpy(self.v_peak))
     
-        return X_cpu, T_cpu, spike_times_cpu
+        return X_cpu, T_cpu, spike_times
 
     def get_params(self, i):
-        # returns the dictionary of params for neuron i
+        # returns the dictionary of params for neuron (row) i
 
         dict = {'name': self.name[i],
                 'k': self.k[i],
@@ -209,6 +226,29 @@ class batchAQUA_GPU:
                 'tau': self.tau[i]}
 
         return dict
+    
+def get_spike_times(X, T, v_peak):
+    # extract times where spikes occur.
+    N_models, _, N_iter = np.shape(X)
+
+    print(f"N_models: {N_models}")
+    print(f"N_iter: {N_iter}")
+
+    spike_times = [[] for _ in range(N_models)]
+
+    spike_mask = (X[:, 0, :] <= v_peak[:, np.newaxis])
+    print(np.shape(spike_mask))
+
+    model_idx, time_idx = np.nonzero(spike_mask)
+    print(model_idx)
+
+    spike_times_flat = T[time_idx]       
+
+    for model_i, time_val in zip(model_idx, spike_times_flat):
+        spike_times[model_i].append(time_val)
+
+    spike_times = pad_list(spike_times)
+    return spike_times
 
 def pad_list(lst, pad_value=np.nan, pad_end = True):
     max_length = max(len(sublist) for sublist in lst)
