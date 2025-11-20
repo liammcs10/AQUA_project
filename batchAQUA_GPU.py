@@ -169,11 +169,11 @@ class batchAQUA_GPU:
                 w_tau1 = X[rows, 2, n - delay_steps - 1]                    # get w at the delay - should be shape (2, )
                 k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])           # first RK param
                 
-                w_tau2 = cp.zeros(self.N_models)  
-                bool_idx1 = cp.nonzero(delay_steps == 0.0)[0]            
-                bool_idx2 = cp.nonzero(delay_steps != 0.0)[0]
-                w_tau2[bool_idx1] = self.x[bool_idx1, 2] + k1[bool_idx1, 2] * dt        # update under first condition
-                w_tau2[bool_idx2] = X[bool_idx2, 2, n - delay_steps[bool_idx2]]         # update under other condition
+                w_half_step = self.x[rows, 2] + k1[rows, 2] * dt
+                w_from_history = X[rows, 2, n - delay_steps]
+
+                w_tau2 = np.where(delay_steps == 0, w_half_step, w_from_history)
+
                 k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])           # second RK param
 
             # update with RK2
