@@ -78,7 +78,7 @@ Fast Spiking (FS) Interneurons - cortical interneurons
 
     - fast, tonic spike trains of constant amplitude and frequency.
     - Tateno et al. (2004) showed they have class 2 excitability (discontinuous F-I)
-    - Injecttion of DC current creates a subHopf/fold cycle bifurcation (creation of a stable and unstable limit cycle).
+    - Injection of DC current creates a subHopf/fold cycle bifurcation (creation of a stable and unstable limit cycle).
     - subthreshold oscillations and stuttering near threshold suggest a subcritical AH bifurcation.
     - Model implemented in AQUA does not fire PIR spikes, this isn't always the case as shown by Tikidji-Hambury 2015
     where the ability of FS neurons to produce PIR was shown.

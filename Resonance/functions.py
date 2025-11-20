@@ -29,7 +29,6 @@ def find_threshold(neuron_params, I_list, T, dt):
     """
 
     N_iter = int(1000*T/dt) # number of iterations
-
     N_neurons = np.shape(I_list)[0]
 
     I_inj = np.array([i*np.ones(N_iter) for i in I_list])
@@ -38,7 +37,6 @@ def find_threshold(neuron_params, I_list, T, dt):
     params = [neuron_params for n in range(N_neurons)]
 
     x_start = np.full((N_neurons, 3), fill_value = np.array([neuron_params["c"], 0., 0.]))
-
     t_start = np.zeros(N_neurons)
 
     neurons = batchAQUA(params)
@@ -60,14 +58,9 @@ def find_threshold(neuron_params, I_list, T, dt):
 
     idx_threshold = np.argwhere(np.isnan(spikes[:, 0]).flatten())[-1]
 
-    split = np.arange(0, N_iter)
-    print(np.shape(X[idx_threshold].reshape((3, N_iter))))
-    fig, ax = plot_membrane_variables(X[idx_threshold, :].reshape((3, N_iter)), T, split = split)
-    plt.show()
-
     threshold = I_list_thresh[idx_threshold][0] # closer estimate of the threshold
     steady_state = X[idx_threshold, :, -1][0]
-    
+
     return threshold, steady_state
 
 def find_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration):
@@ -114,9 +107,12 @@ def find_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration):
 
     _, _, spikes = neurons.update_batch(dt, N_iter, I_inj)
     
-    idx_threshold = np.argwhere(~np.isnan(spikes[:, 0]).flatten())[0]
-    pulse_height_low = I_list[idx_threshold]        # first estimate of the pulse height
-    pulse_height_high = I_list[idx_threshold + 1]   # second estimate of the pulse height
+    idx_low = np.argwhere(np.isnan(spikes[:, 0]).flatten())[-1] # last pulse to not produce a spike
+    idx_high = np.argwhere(~np.isnan(spikes[:, 0].flatten()))[0] # first pulse to produce a spike
+
+    pulse_height_low = I_list[idx_low]          # lower bound estimate
+    pulse_height_high = I_list[idx_high]        # upper bound estimate
+
 
     # refine the search
     I_list_refine = np.linspace(pulse_height_low, pulse_height_high, N_neurons)
@@ -126,13 +122,16 @@ def find_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration):
     neurons.Initialise(x_start, t_start)
     _, _, spikes = neurons.update_batch(dt, N_iter, I_inj_refine)
 
-    idx_threshold = np.argwhere(~np.isnan(spikes[:, 0]).flatten())[0]
-    pulse_height = I_list_refine[idx_threshold][0]     # close estimate of the pulse height
+    idx_threshold = np.argwhere(~np.isnan(spikes[:, 0]).flatten())[0]   # first pulse to make spike
+    idx_2 = np.argwhere(np.isnan(spikes[:, 0].flatten()))[-1]   # last pulse to not make spike.
+    pulse_height = I_list_refine[idx_threshold][0]      # close estimate of the pulse height
+    pulse_height2 = I_list_refine[idx_2][0]             # the next lowest pulse which didn't produce a spike.
+
 
     pulse_end = delay + pulse_duration - dt
     spike_time = spikes[idx_threshold, 0] - pulse_end
     
-    return pulse_height, spike_time
+    return pulse_height, pulse_height2, spike_time
 
 def find_2nd_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration, first_pulse_height, time_to_spike, resonant_ISI):
     """
@@ -200,11 +199,12 @@ def find_2nd_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duratio
 
     _, _, spikes = neurons.update_batch(dt, N_iter, I_inj)
 
-    idx_threshold = np.argwhere(~np.isnan(spikes[:, 1]).flatten())[0]
-    pulse_height_low = I_list[idx_threshold]            # first estimate of the pulse height
-    pulse_height_high = I_list[idx_threshold + 1]       # second estimate of the pulse height
+    idx_low = np.argwhere(np.isnan(spikes[:, 1]).flatten())[-1]     # last pulse no spike
+    idx_high = np.argwhere(~np.isnan(spikes[:, 1].flatten()))[0]    # first pulse to spike
+    pulse_height_low = I_list[idx_low]            # first estimate of the pulse height
+    pulse_height_high = I_list[idx_high]          # second estimate of the pulse height
 
-    """ Maybe don't need an accurate estimate for this experiment?
+    """ FOR more accurate pulse height...
     # refine the search
     I_list_refine = np.linspace(pulse_height_low, pulse_height_high, N_neurons)
     I_inj_refine = threshold*np.ones((N_neurons, N_iter))
@@ -216,10 +216,10 @@ def find_2nd_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duratio
     neurons.Initialise(x_start, t_start)
     _, _, spikes = neurons.update_batch(dt, N_iter, I_inj_refine)
 
-    idx_threshold = np.argwhere(~np.isnan(spikes[:, 1]).flatten())[0]
+    idx_threshold = np.argwhere(~np.isnan(spikes[:, 1]).flatten())[0]   #
     pulse_height = I_list_refine[idx_threshold][0]     # close estimate of the pulse height
     """
-    return pulse_height_low
+    return pulse_height_high
 
 
 def get_resonance_bands(resonant_f, spike_boolean):
@@ -227,26 +227,28 @@ def get_resonance_bands(resonant_f, spike_boolean):
     Returns the resonance bands given the frequencies tested and number of spikes produced
     
     """
-    band_limits = np.diff(spike_boolean)
+    spike_boolean = spike_boolean.astype(int)
 
-    band_starts = np.argwhere(band_limits == 1).flatten()
-    band_ends = np.argwhere(band_limits == -1).flatten()
+    band_limits = np.diff(spike_boolean, prepend = 0, append = 0)
 
-    frequency_bands = np.zeros((len(band_ends), 2))
+    band_starts = np.where(band_limits == -1)[0]-1
+    band_ends = np.where(band_limits == 1)[0]
 
-    for n in range(len(band_ends)): # count backwards
-        if n == 0:
-            frequency_bands[n] = np.array([0.0, resonant_f[band_ends[0]]]) # low frequencies trigger a spike
-        else:
-            frequency_bands[n] = np.array([resonant_f[band_starts[n-1]], resonant_f[band_ends[n]]])
+    frequency_bands = np.zeros((len(band_starts), 2))
+
+    for n in range(len(band_starts)): # band_starts and ends should be the same length
+        frequency_bands[n] = np.array([resonant_f[band_starts[n]], resonant_f[band_ends[n]]])
     
     return frequency_bands
 
-#def get_pulse_limits(pulse_times):
+#def hazems_pulses(pulse_height, pulse_durations, pulse_ISI, frequency):
+
+
+
 
 """- - - - PLOTTING FUNCTIONS - - - - """
 
-def plot_resonance_map(frequencies, bands):
+def plot_resonance_map(frequencies, bands, title = 'Resonance Map of neurons'):
     """
     Returns a heat map of the resonance frequencies of the neurons
 
@@ -261,16 +263,31 @@ def plot_resonance_map(frequencies, bands):
 
     fig, ax = plt.subplots(1, 1, figsize = (8, 8))
 
-    ax.imshow(bands, origin = 'lower', cmap = 'Greys', extent = [frequencies[0], frequencies[-1], 0, np.shape(bands)[0]])
+    unique_vals = np.unique(bands)
+    print(unique_vals)
+    num_vals = len(unique_vals)
+    base_cmap = plt.cm.get_cmap("Greys", num_vals)
+    im = ax.imshow(bands, origin = 'lower', cmap = base_cmap, aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, np.shape(bands)[0]])
+    cbar = fig.colorbar(im, ax = ax, shrink = 0.5)
+    cbar.set_ticks(np.linspace(np.min(unique_vals), np.max(unique_vals), num_vals))
+    cbar.set_ticklabels(unique_vals)
 
     ax.set_xlabel('Frequency (Hz)', fontsize = 16)
     ax.set_ylabel('Neuron index', fontsize = 16)
 
-    ax.set_title('Resonance Map of neurons', fontsize = 20)
+    # define grid
+    ax.set_xticks(np.arange(0, np.shape(bands)[1], 5), minor = True)
+    ax.set_xticks(np.arange(0, np.shape(bands)[1], 25))
+    ax.set_yticks(np.arange(0, np.shape(bands)[0], 1), minor = True)
+    ax.set_yticks(np.arange(0, np.shape(bands)[0], 5))
+    ax.grid(alpha = 0.4, which = 'minor')
+    ax.grid(alpha = 0.8, which = 'major')
 
-    return fig, ax
+    ax.set_title(title, fontsize = 20)
 
-def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_params):
+    return fig, ax, im
+
+def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_params, title = 'Resonance Map of neurons ordered by'):
     """
     Plots the resonance properties of neurons for a given autapse parameter.
     Y label only shows the first parameter value sorting the list.
@@ -304,7 +321,14 @@ def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_param
 
     fig, ax = plt.subplots(1, 1, figsize = (8, 8))
 
-    ax.imshow(bands[sorted_indices, :], origin = 'lower', cmap = 'Greys', aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, len(param_values)])
+    unique_vals = np.unique(bands)
+    num_vals = len(unique_vals)
+    base_cmap = plt.cm.get_cmap("Greys", num_vals)
+    im = ax.imshow(bands[sorted_indices, :], origin = 'lower', cmap = base_cmap, aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, len(param_values)])
+    cbar = fig.colorbar(im, ax = ax, shrink = 0.5)
+    cbar.set_ticks(np.linspace(np.min(unique_vals), np.max(unique_vals), num_vals))
+    cbar.set_ticklabels(unique_vals)
+    
     ax.set_xlabel('Frequency (Hz)', fontsize = 16)
     ax.set_ylabel(f'{autapse_params[0]} value', fontsize = 16)
     cumsum = np.insert(cumsum, 0, 0.)
@@ -316,10 +340,17 @@ def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_param
     ax.set_xlim((xmin, xmax))
     ax.hlines(y = np.cumsum(num_neurons_with_param), xmin = xmin, xmax = xmax, colors = "grey", linestyles = "dashed")
 
-    ax.set_title(f'Resonance Map of neurons ordered by {autapse_params}', fontsize = 20)
-    #ax.legend()
+    ax.set_title(f'{title} {autapse_params}', fontsize = 20)
+    
+    # define grid
+    ax.set_xticks(np.arange(0, np.shape(bands)[1], 5), minor = True)
+    ax.set_xticks(np.arange(0, np.shape(bands)[1], 25))
+    ax.set_yticks(np.arange(0, np.shape(bands)[0], 1), minor = True)
+    ax.set_yticks(np.arange(0, np.shape(bands)[0], 5))
+    ax.grid(alpha = 0.4, which = 'minor')
+    ax.grid(alpha = 0.8, which = 'major')
 
-    return fig, ax
+    return fig, ax, im
 
 """ SIMULATION 2 PLOTS"""
 # Plots of the spike to pulse ratio from simulation 2
@@ -486,7 +517,6 @@ def pulses_to_spike(spike_times, pulse_starts, multipulse_freq):
     ax.set_ylabel("Neuron number", fontsize = 16)
     ax.set_title("Number of pulses to produce a spike", fontsize = 20)
 
-
     return fig, ax
 
 
@@ -513,7 +543,6 @@ def subsequent_spikes(spike_times, pulse_starts, multipulse_freq):
     first_spike = spike_times[:, 0]
     first_spike = np.nan_to_num(first_spike, nan = 0.0)
     first_spike = first_spike[:, np.newaxis]
-
 
     second_spike = spike_times[:, 1]
     second_spike = np.nan_to_num(second_spike, nan = 0.0)
@@ -542,13 +571,26 @@ def subsequent_spikes(spike_times, pulse_starts, multipulse_freq):
     # Plot the heatmap...
     fig, ax = plt.subplots(1, 1, figsize = (12, 6))
     
-    cax = ax.imshow(subsequent_spikes, origin = 'lower', cmap = "Greys", aspect = 'auto') #, extent = [0, np.shape(num_pulses_to_spike)[1], 0, np.shape(num_pulses_to_spike)[0]])
+    base_cmap = plt.cm.get_cmap("Greys", 2) # 2 colour map
+    cax = ax.imshow(subsequent_spikes, origin = 'lower', cmap = base_cmap, aspect = 'auto') #, extent = [0, np.shape(num_pulses_to_spike)[1], 0, np.shape(num_pulses_to_spike)[0]])
+    cbar = fig.colorbar(cax, ax = ax, shrink = 0.5)
+    ticklabels = ["False", "True"]
+    cbar.set_ticks([0.25, 0.75])
+    cbar.set_ticklabels(ticklabels)
 
-    x_ticks = np.linspace(0, N_freq-1, 6, dtype = int)
-    ax.set_xticks(ticks = x_ticks, labels = np.round(multipulse_freq[x_ticks], 2))
+    #x_ticks = np.linspace(0, N_freq-1, 12, dtype = int)
+    #ax.set_xticks(ticks = x_ticks, labels = np.round(multipulse_freq[x_ticks], 2))
     ax.set_xlabel("Pulse Frequency [Hz]", fontsize = 16)
     ax.set_ylabel("Neuron number", fontsize = 16)
-    ax.set_title("Number of pulses to produce a spike", fontsize = 20)
+    ax.set_title("Whether the second pulse after a spike, produces a spike", fontsize = 20)
+
+    # define grid
+    ax.set_xticks(np.arange(0, np.shape(subsequent_spikes)[1], 5), minor = True)
+    ax.set_xticks(np.arange(0, np.shape(subsequent_spikes)[1], 25))
+    ax.set_yticks(np.arange(0, np.shape(subsequent_spikes)[0], 1), minor = True)
+    ax.set_yticks(np.arange(0, np.shape(subsequent_spikes)[0], 5))
+    ax.grid(alpha = 0.4, which = 'minor')
+    ax.grid(alpha = 0.8, which = 'major')
     
     return fig, ax
 
@@ -621,14 +663,17 @@ def subsequent_spikes_by_params(spike_times, pulse_starts, multipulse_freq, para
 
     # Plot the heatmap...
     fig, ax = plt.subplots(1, 1, figsize = (12, 6))
-    
-    cax = ax.imshow(subsequent_spikes[sorted_indices, :], origin = 'lower', cmap = "Greys", aspect = 'auto', extent = [0, np.shape(subsequent_spikes)[1], 0, np.shape(subsequent_spikes)[0]])
-
+    base_cmap = plt.cm.get_cmap("Greys", 2) # 2 colour map
+    cax = ax.imshow(subsequent_spikes[sorted_indices, :], origin = 'lower', cmap = base_cmap, aspect = 'auto', extent = [0, np.shape(subsequent_spikes)[1], 0, np.shape(subsequent_spikes)[0]])
+    cbar = fig.colorbar(cax, ax = ax, shrink = 0.5)
+    ticklabels = ["False", "True"]
+    cbar.set_ticks([0.25, 0.75])
+    cbar.set_ticklabels(ticklabels)
     x_ticks = np.linspace(0, N_freq-1, 6, dtype = int)
     ax.set_xticks(ticks = x_ticks, labels = np.round(multipulse_freq[x_ticks], 2))
     ax.set_xlabel("Pulse Frequency [Hz]", fontsize = 16)
     ax.set_ylabel(f"Neuron number ordered by {params[0]}", fontsize = 16)
-    ax.set_title(f"Number of pulses to produce a spike order by {params}", fontsize = 20)
+    ax.set_title(f"Whether the pulse after a spike produces a spike (ordered by {params})", fontsize = 20)
 
     cumsum = np.insert(cumsum, 0, 0.)
     tick_loc = (cumsum[:-1] + cumsum[1:])/2.0
@@ -652,7 +697,6 @@ def plot_total_spikes(num_spikes, multipulse_freq, param_df, param_order = []):
                             pulse frequencies sampled.
     """
     N_freq = np.shape(multipulse_freq)[0]
-    print(f"N_freq: {N_freq}")
 
     min_spikes = np.min(num_spikes)
     max_spikes = np.max(num_spikes)

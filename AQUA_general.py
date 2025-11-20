@@ -2,18 +2,24 @@
 General Izhikevich neuron model. 
 
 Cortical neurons and parameter values.
+
+pyramidal cells: L2/3/5/6
 RS = {'name': 'RS', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
      'a': 0.03, 'b': -2, 'c': -50, 'd': 100}    # Class 1
 
+pyramidal cells: all layers, abundantly L5
 IB = {'name': 'IB', 'C': 150, 'k': 1.2, 'v_r': -75, 'v_t': -45, 'v_peak': 50,
      'a': 0.01, 'b': 5, 'c': -56, 'd': 130}
 
+pyramidal cells: L2-4, abundantly L3
 CH = {'name': 'CH', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
      'a': 0.03, 'b': -2, 'c': -40, 'd': 100}
 
+nonpyramidal interneurons (local inter-laminar inhibition)
 LTS = {'name': 'LTS', 'C': 100, 'k': 1, 'v_r': -56, 'v_t': -42, 'v_peak': 35,
      'a': 0.03, 'b': 8, 'c': -50, 'd': 100}   # Border of integrator-resonator (Bogdanov-Takens)
 
+inhibitory basket or chandelier cells (local intra-laminar inhibition)
 FS = {'name': 'FS', 'C': 20, 'k': 1, 'v_r': -55, 'v_t': -40, 'v_peak': 25,
      'a': 0.2, 'b': -2, 'c': -45, 'd': 0}   # subcritical Andronov-Hopf (class 2)
     * requires a nonlinear u-nullcline (horizontal in the hyperpolarized range)
@@ -73,9 +79,9 @@ class AQUA:
 
         dv = (1/self.C) * (self.k * (v - self.v_r) * (v - self.v_t) - u + w_delay + I)
         
-        # Different model for FS neurons
+        # Different model for FS neurons with nonlinear u-nullcline.
         if "FS" in self.name:
-            if v < -55:
+            if v < -55:     
                 U = 0
             else:
                 U = 0.025 * (v + 55)**3
