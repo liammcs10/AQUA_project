@@ -61,7 +61,7 @@ def find_threshold(neuron_params, I_list, T, dt):
     threshold = I_list_thresh[idx_threshold][0] # closer estimate of the threshold
     steady_state = X[idx_threshold, :, -1][0]
 
-    return threshold, steady_state, X, T, idx_threshold[0]
+    return threshold, steady_state
 
 def find_pulse_height(neuron_params, I_list, threshold, x_ini, pulse_duration):
     """
@@ -240,6 +240,10 @@ def get_resonance_bands(resonant_f, spike_boolean):
         frequency_bands[n] = np.array([resonant_f[band_starts[n]], resonant_f[band_ends[n]]])
     
     return frequency_bands
+
+#def hazems_pulses(pulse_height, pulse_durations, pulse_ISI, frequency):
+
+
 
 
 """- - - - PLOTTING FUNCTIONS - - - - """
