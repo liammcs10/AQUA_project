@@ -12,6 +12,7 @@ Ways to improve:
 import numpy as np
 import cupy as cp
 from tqdm import tqdm
+import time
 
 class batchAQUA_GPU:
 
@@ -80,21 +81,24 @@ class batchAQUA_GPU:
         v, u, w = x.T
 
         dv = (1/self.C) * (self.k * (v - self.v_r) * (v - self.v_t) - u + w_delay + I)
-
         
-        du = cp.zeros(cp.shape(u))
+        # du = cp.zeros(cp.shape(u))
         # FS neurons have a nonlinear u-nullcline.
 
         cond_FS_hyperpolarized = self.isFS & (v < -55)  # is FS and hyperpolarized
         cond_FS_depolarized = self.isFS & (v >= -55)    # is FS and depolarized 
         cond_notFS = ~self.isFS # not FS
         # update FS neuron
-        du[cond_FS_hyperpolarized] = self.a[cond_FS_hyperpolarized] * (-1. * u[cond_FS_hyperpolarized]) # where neuron is FS and v < -55, U = 0
-        du[cond_FS_depolarized] = self.a[cond_FS_depolarized] * (0.025 * (v[cond_FS_depolarized] + 55.)**3 - u[cond_FS_depolarized])
+        #du[cond_FS_hyperpolarized] = self.a[cond_FS_hyperpolarized] * (-1. * u[cond_FS_hyperpolarized]) # where neuron is FS and v < -55, U = 0
+        #du[cond_FS_depolarized] = self.a[cond_FS_depolarized] * (0.025 * (v[cond_FS_depolarized] + 55.)**3 - u[cond_FS_depolarized])
+        du_FS_hyp = cp.multiply(self.a, cond_FS_hyperpolarized) * (-1. * cp.multiply(u, cond_FS_hyperpolarized))  # where FS with v < -55, U = 0.
+        du_FS_dep = cp.multiply(self.a, cond_FS_depolarized) * (0.025 * (cp.multiply(v, cond_FS_depolarized)) + 55.)**3 - cp.multiply(u, cond_FS_depolarized)
         # all other neurons are normal
-        du[cond_notFS] = self.a[cond_notFS] * (self.b[cond_notFS] * (v[cond_notFS] - self.v_r[cond_notFS]) - u[cond_notFS])
-        du[cond_notFS] = self.a[cond_notFS] * (self.b[cond_notFS] * (v[cond_notFS] - self.v_r[cond_notFS]) - u[cond_notFS])
-        
+        #du[cond_notFS] = self.a[cond_notFS] * (self.b[cond_notFS] * (v[cond_notFS] - self.v_r[cond_notFS]) - u[cond_notFS])
+        du_not_FS = cp.multiply(self.a, cond_notFS) * (cp.multiply(self.b, cond_notFS) * (cp.multiply(v, cond_notFS) - cp.multiply(self.v_r, cond_notFS)) - cp.multiply(u, cond_notFS))
+
+        du = du_FS_hyp + du_FS_dep + du_not_FS      # merge du
+
         dw = -1 * self.e * w
 
         return cp.array([dv, du, dw]).T
@@ -139,9 +143,11 @@ class batchAQUA_GPU:
         # makes the GPU speedup redundant...
         # spike_times = [[] for _ in range(self.N_models)]
 
-
-        for n in tqdm(range(1, N_iter)):  # each neuron updated simultaneously with vectorization
-
+        timer = 0.
+        for n in tqdm(cp.arange(1, N_iter)):  # each neuron updated simultaneously with vectorization
+            n = int(n)
+            #print(f"Iteration {n}: {time.time() - timer}")
+            timer = time.time()
             if n <= cp.max(delay_steps): # early in sim
 
                 w_tau1 = cp.zeros(self.N_models)                
@@ -165,6 +171,7 @@ class batchAQUA_GPU:
                 k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])               # second RK param
 
             else: # all neurons are beyond delay steps
+                timer2 = time.time()
                 rows = cp.arange(np.shape(X)[0])            # all rows
                 w_tau1 = X[rows, 2, n - delay_steps - 1]                    # get w at the delay - should be shape (2, )
                 k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])           # first RK param
@@ -175,7 +182,8 @@ class batchAQUA_GPU:
                 w_tau2 = np.where(delay_steps == 0, w_half_step, w_from_history)
 
                 k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])           # second RK param
-
+                #print(f"Duration of update: {time.time() - timer2}")
+            
             # update with RK2
             self.x = self.x + dt * (k1 + k2)/2
             self.t = self.t + dt
@@ -204,7 +212,7 @@ class batchAQUA_GPU:
         X_cpu = X.get()
         T_cpu = T.get()
 
-        spike_times = get_spike_times(X, T, cp.asnumpy(self.v_peak))
+        spike_times = get_spike_times(X_cpu, T_cpu, cp.asnumpy(self.v_peak))
     
         return X_cpu, T_cpu, spike_times
 
