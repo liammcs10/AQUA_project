@@ -180,3 +180,30 @@ class AQUA:
                 'tau': self.tau}
 
         return dict
+
+    def get_net_autapse_current(self):
+        """
+        Returns the integral (net current) of the autapse 
+        -> Measure of the strength of the autapse
+        """
+
+        if self.f == 0:
+            return 0.
+        elif self.e == 0.:
+            #raise Exception("Infinite decay time, division by zero...")
+            return np.nan 
+
+        # otherwise   
+        return self.f/self.e
+
+    def get_mean_autapse_delay(self):
+        """
+        Returns the time that the mean autapse current is delivered.
+        Defined here as time delay + the half-life of decay.
+        
+        """
+        if self.f == 0.:
+            return np.nan
+        elif self.e == 0.:
+            raise Exception("Infinite decay time, division by zero...")
+        return self.tau + (np.log(2)/self.e)
