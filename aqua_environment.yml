@@ -15,4 +15,5 @@ dependencies:
   - mypy
   - ipykernel
   - cupy
+  - brian2
 prefix: C:\Users\liamm\anaconda3\envs\aqua
