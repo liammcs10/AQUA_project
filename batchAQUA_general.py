@@ -204,7 +204,7 @@ class batchAQUA:
 
         return dict
     
-    def get_net_autapse_current(self):
+    def get_net_autapse_currents(self):
         """
         Returns the net current from autapses in the entire batch.
         If infinite decay time, then np.nan is returned in that element.
@@ -214,7 +214,7 @@ class batchAQUA:
         a.fill(np.nan)
         return np.divide(self.f, self.e, out = a, where=self.e!=0.)
 
-    def get_mean_autapse_delay(self):
+    def get_mean_autapse_delays(self):
         """
         Returns the time at which half the autapse is injected
         Defined here as the time delay plus the half-life of decay.
