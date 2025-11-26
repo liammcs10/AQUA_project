@@ -248,7 +248,7 @@ def get_resonance_bands(resonant_f, spike_boolean):
 
 """- - - - PLOTTING FUNCTIONS - - - - """
 
-def plot_resonance_map(frequencies, bands, title = 'Resonance Map of neurons'):
+def plot_resonance_map(frequencies, bands, fig = None, ax = None, title = 'Resonance Map of neurons'):
     """
     Returns a heat map of the resonance frequencies of the neurons
 
@@ -260,8 +260,8 @@ def plot_resonance_map(frequencies, bands, title = 'Resonance Map of neurons'):
                         resonance bands for each neuron
     
     """
-
-    fig, ax = plt.subplots(1, 1, figsize = (8, 8))
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(1, 1, figsize = (8, 8))
 
     unique_vals = np.unique(bands)
     print(unique_vals)
@@ -287,7 +287,7 @@ def plot_resonance_map(frequencies, bands, title = 'Resonance Map of neurons'):
 
     return fig, ax, im
 
-def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_params, title = 'Resonance Map of neurons ordered by'):
+def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_params, fig = None, ax = None, title = 'Resonance Map of neurons ordered by'):
     """
     Plots the resonance properties of neurons for a given autapse parameter.
     Y label only shows the first parameter value sorting the list.
@@ -319,7 +319,8 @@ def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_param
     ordered_df = param_df.sort_values(by = autapse_params)
     sorted_indices = np.array(ordered_df.index.tolist(), dtype = int)
 
-    fig, ax = plt.subplots(1, 1, figsize = (8, 8))
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(1, 1, figsize = (8, 8))
 
     unique_vals = np.unique(bands)
     num_vals = len(unique_vals)
@@ -351,6 +352,32 @@ def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_param
     ax.grid(alpha = 0.8, which = 'major')
 
     return fig, ax, im
+
+def plot_resonance_to_pulses(param_df, frequencies1, bands1, bands2, autapse_param = None, title = "Resonance by pulse number"):
+    """
+    Subtract test 1 resonance from 3 pulses resonance. Determines if pulse 3 caused the 2nd spike.
+    1st axis plots where the second pulse produced a spike (basically just test 1)
+    2nd axis plots where only the third pulse produced a spike (subtract test1 from 3_pulses)
+    """
+    
+    fig, ax = plt.subplots(2, 1, figsize = (8, 8), constrained_layout = True)
+
+    if autapse_param is None:
+        fig, ax[0], _ = plot_resonance_map(frequencies1, bands1, fig, ax[0])
+        fig, ax[1], _ = plot_resonance_map(frequencies1, bands2-bands1, fig, ax[1])
+    else:
+        fig, ax[0], _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands1, autapse_param, fig, ax[0])
+        fig, ax[1], _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands2-bands1, autapse_param, fig, ax[1])
+    
+
+    fig.suptitle(title, fontsize = 22)
+    ax[0].set_title("Resonance to second pulse only", fontsize = 16)
+    ax[1].set_title("Resonance to third pulse only", fontsize = 16)
+
+    return fig, ax
+    # Now for third pulse
+
+
 
 """ SIMULATION 2 PLOTS"""
 # Plots of the spike to pulse ratio from simulation 2

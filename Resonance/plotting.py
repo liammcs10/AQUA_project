@@ -34,6 +34,9 @@ def plot(args, conf):
     # 3 pulses
     three_pulse_plots(dict, conf, param_df, args)
 
+    # compare test1 to 3 pulses
+    compare_test1_3pulse(dict, conf, param_df, args)
+
     # test 2
     test2_plots(dict, conf, param_df, args)
 
@@ -118,6 +121,34 @@ def three_pulse_plots(dict, conf, param_df, args):
     #cbar.set_label("Number of spikes produced")
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_num_spikes_by_tau.png")
     plt.close(fig)
+
+def compare_test1_3pulse(dict, conf, param_df, args):
+    """
+    Plot identifying which pulse produced a spike in the 3 pulse test.
+
+    """
+
+    neuron_name = conf["Neuron"]["name"]
+    output_directory = conf["Output"]["out_dir"]
+
+    # Simulation 1 outputs
+    frequencies1 = dict["Simulation 1"]["frequencies"]
+    bands1 = dict["Simulation 1"]["bands"]
+
+    # Three pulse output
+    frequencies2 = dict["Three pulses"]["frequencies"]
+    bands2 = dict["Three pulses"]["bands"]
+    num_spikes_three_pulses = dict["Three pulses"]["num_spikes"]
+
+    print(frequencies1[:20])
+    print(frequencies2[:20])
+
+
+    fig, ax = plot_resonance_to_pulses(param_df, frequencies1, bands1, bands2)
+    if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_compare_T1_3P.png")
+    plt.show()
+
+
 
 
 def test2_plots(dict, conf, param_df, args):
@@ -220,17 +251,19 @@ def plot_all_indices(dict, trial_label, params, indices, plot_freq, ref_freq, ou
     
     """
     N_neurons = np.shape(params)[0]
+    print(f"N_neurons: {N_neurons}")
 
     X = dict[trial_label]["X"]
+    print(f"shape X: {np.shape(X)}")
     T = dict[trial_label]["T"]
     I = dict[trial_label]["I"]
 
 
     for n, i in enumerate(indices):
         # i is the neuron index
-        e = params[i]["e"]
-        f = params[i]["f"]
-        tau = params[i]["tau"]
+        e = params[n]["e"]
+        f = params[n]["f"]
+        tau = params[n]["tau"]
 
         for m, freq in enumerate(plot_freq):
             # f is the value of the plotting frequency
