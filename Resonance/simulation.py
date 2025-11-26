@@ -114,7 +114,7 @@ def sim(args, conf, SUBSET = False):
         print(f"Peak Resonance: {peak_resonance}")
 
         # 3 pulse test
-        frequencies2, bands2, num_spikes_three_pulses, pulse_times = three_pulse_test(conf, params_arr, SUBSET) 
+        frequencies2, bands2, num_spikes_three_pulses = three_pulse_test(conf, params_arr, SUBSET) 
 
         ## 2nd test: a train of pulses all equally spaced. We want to see if a spike occurrs on subsequent pulses
         N_pulses, multipulse_freq, num_spikes, spike_freq, spike_times, pulse_starts = second_test(conf, params_arr, peak_resonance, pulse_height+10, time_to_spike, SUBSET)
@@ -126,7 +126,7 @@ def sim(args, conf, SUBSET = False):
         # At this stage just save the outputs
         results_dict = {"Parameters": params_arr,
                         "Simulation 1": {"frequencies": frequencies1, "bands": bands1},
-                        "Three pulses": {"frequencies": frequencies2, "bands": bands2, "num_spikes": num_spikes_three_pulses, "pulse times": pulse_times},
+                        "Three pulses": {"frequencies": frequencies2, "bands": bands2, "num_spikes": num_spikes_three_pulses},
                         "Simulation 2": {"multipulse_freq": multipulse_freq, "num_spikes": num_spikes, "spike_freq": spike_freq, "spike_times": spike_times, "pulse_starts": pulse_starts}}
 
         # save the results dict as a pickle
@@ -206,7 +206,7 @@ def first_test(conf, params_arr, SUBSET):
     spike_boolean = np.zeros(N_sims)
 
     for n in range(N_sims):
-        if len(spikes[n, np.isnan(spikes[n])]) != 1:        # if 2 spikes generated
+        if len(spikes[n, ~np.isnan(spikes[n])]) > 1:        # if 2 spikes generated
             spike_boolean[n] = 1
         pulse_times = np.argwhere(I_inj[n, :] > threshold) * dt                     # pulse times in ms
         pulse2_start[n] = pulse_times[np.where(pulse_times > pulse1_end)][0]        # start time of the second pulse, ms
@@ -219,14 +219,13 @@ def first_test(conf, params_arr, SUBSET):
     resonant_ISI = resonant_ISI[0, :]   # only take the first row as all rows are identical
     resonant_f = 1000/resonant_ISI # represents the frequency of the pulses w.r.t the spike time
     """
-    frequencies = 1000/ISI_range    # convert pulse intervals to frequency
 
     bands = spike_boolean.reshape((N_neurons, N_freq), order = 'F') # where 2 spikes were generated. Maps to the frequencies.
     
     if SUBSET:
-        return X, T, spikes, I_inj, frequencies, bands, pulse_height, time_to_spike
+        return X, T, spikes, I_inj, freq_range, bands, pulse_height, time_to_spike
     # else
-    return frequencies, bands, pulse_height, time_to_spike
+    return freq_range, bands, pulse_height, time_to_spike
 
 
 def three_pulse_test(conf, params_arr, SUBSET):
@@ -301,7 +300,7 @@ def three_pulse_test(conf, params_arr, SUBSET):
     num_spikes = np.ones(N_sims)   # will only count number of spikes > 1, otherwise 1
 
     for n in range(N_sims):
-        if len(spikes[n, np.isnan(spikes[n])]) != 2:        # if 2 or more spikes generated
+        if len(spikes[n, ~np.isnan(spikes[n])]) > 1:        # if 2 or more spikes generated
             spike_boolean[n] = 1                                     # register successful run.
             num_spikes[n] = len(spikes[n, ~np.isnan(spikes[n])])     # actual number of spikes can be 2 or 3, else 1 (initial spike).
 

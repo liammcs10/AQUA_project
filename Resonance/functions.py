@@ -264,7 +264,6 @@ def plot_resonance_map(frequencies, bands, fig = None, ax = None, title = 'Reson
         fig, ax = plt.subplots(1, 1, figsize = (8, 8))
 
     unique_vals = np.unique(bands)
-    print(unique_vals)
     num_vals = len(unique_vals)
     base_cmap = plt.cm.get_cmap("Greys", num_vals)
     im = ax.imshow(bands, origin = 'lower', cmap = base_cmap, aspect = 'auto', extent = [frequencies[0], frequencies[-1], 0, np.shape(bands)[0]])
@@ -353,7 +352,7 @@ def plot_resonance_for_autapse_param(param_df, frequencies, bands, autapse_param
 
     return fig, ax, im
 
-def plot_resonance_to_pulses(param_df, frequencies1, bands1, bands2, autapse_param = None, title = "Resonance by pulse number"):
+def plot_resonance_to_pulses(param_df, frequencies1, bands1, bands2, num_spikes, autapse_param = None, title = "Resonance by pulse number"):
     """
     Subtract test 1 resonance from 3 pulses resonance. Determines if pulse 3 caused the 2nd spike.
     1st axis plots where the second pulse produced a spike (basically just test 1)
@@ -361,13 +360,17 @@ def plot_resonance_to_pulses(param_df, frequencies1, bands1, bands2, autapse_par
     """
     
     fig, ax = plt.subplots(2, 1, figsize = (8, 8), constrained_layout = True)
+    
+    where_allthree = num_spikes == 3
+    where_onlyfirst = bands1 - where_allthree
+    where_onlylast = num_spikes - 1 - bands1 - where_allthree
 
     if autapse_param is None:
-        fig, ax[0], _ = plot_resonance_map(frequencies1, bands1, fig, ax[0])
-        fig, ax[1], _ = plot_resonance_map(frequencies1, bands2-bands1, fig, ax[1])
+        fig, ax[0], _ = plot_resonance_map(frequencies1, where_onlyfirst, fig, ax[0])
+        fig, ax[1], _ = plot_resonance_map(frequencies1, where_onlylast, fig, ax[1])
     else:
-        fig, ax[0], _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands1, autapse_param, fig, ax[0])
-        fig, ax[1], _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands2-bands1, autapse_param, fig, ax[1])
+        fig, ax[0], _ = plot_resonance_for_autapse_param(param_df, frequencies1, where_onlyfirst, autapse_param, fig, ax[0])
+        fig, ax[1], _ = plot_resonance_for_autapse_param(param_df, frequencies1, where_onlylast, autapse_param, fig, ax[1])
     
 
     fig.suptitle(title, fontsize = 22)
@@ -375,7 +378,6 @@ def plot_resonance_to_pulses(param_df, frequencies1, bands1, bands2, autapse_par
     ax[1].set_title("Resonance to third pulse only", fontsize = 16)
 
     return fig, ax
-    # Now for third pulse
 
 
 

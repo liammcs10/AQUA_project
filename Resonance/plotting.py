@@ -57,25 +57,30 @@ def test1_plots(dict, conf, param_df, args):
 
     ## Now plot the data...
     fig, ax, _ = plot_resonance_map(frequencies1, bands1)
+    ax.set_xlim((0, 50))
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_unordered.png")
     plt.close(fig)
 
     # plot ordered by 'e'
     fig, ax, _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands1, ["e"])
+    ax.set_xlim((0, 50))
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_by_e.png")
     plt.close(fig)
     
     # plot ordered by 'f'
     fig, ax, _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands1, ["f"])
+    ax.set_xlim((0, 50))
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_by_f.png")
     plt.close(fig)
 
     # plot ordered by 'tau'
     fig, ax, _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands1, ["tau"])
+    ax.set_xlim((0, 50))
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_by_tau.png")
     plt.close(fig)
 
     fig, ax, _ = plot_resonance_for_autapse_param(param_df, frequencies1, bands1, ["e", "f"])
+    ax.set_xlim((0, 50))
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_by_e_f.png")
     plt.close(fig)
 
@@ -97,26 +102,31 @@ def three_pulse_plots(dict, conf, param_df, args):
 
 
     fig, ax, _ = plot_resonance_map(frequencies2, bands2, title = 'Resonance map for three-pulse protocol')
+    ax.set_xlim((0, 50))
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_3pulses_unordered.png")
     plt.close(fig)
 
     fig, ax, _ = plot_resonance_for_autapse_param(param_df, frequencies2, bands2, ["e", "f"], title = 'Resonance map for three-pulse protocol ordered by')
+    ax.set_xlim((0, 50))
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_3pulses_by_e_f.png")
     plt.close(fig)
 
     fig, ax, im = plot_resonance_map(frequencies2, num_spikes_three_pulses, title = 'Number of spikes emitted by \nthe 3-pulse protocol')
+    ax.set_xlim((0, 50))
     #cbar = fig.colorbar(im, ax=ax)
     #cbar.set_label("Number of spikes produced")
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_num_spikes_unordered.png")
     plt.close(fig)
 
     fig, ax, im = plot_resonance_for_autapse_param(param_df, frequencies2, num_spikes_three_pulses, ['e', 'f'], title = 'Number of spikes emitted by \nthe 3-pulse protocol')
+    ax.set_xlim((0, 50))
     #cbar = fig.colorbar(im, ax=ax)
     #cbar.set_label("Number of spikes produced")
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_num_spikes_by_e_f.png")
     plt.close(fig)
 
     fig, ax, im = plot_resonance_for_autapse_param(param_df, frequencies2, num_spikes_three_pulses, ['tau'], title = 'Number of spikes emitted by \nthe 3-pulse protocol')
+    ax.set_xlim((0, 50))
     #cbar = fig.colorbar(im, ax=ax)
     #cbar.set_label("Number of spikes produced")
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_resonator_num_spikes_by_tau.png")
@@ -144,7 +154,9 @@ def compare_test1_3pulse(dict, conf, param_df, args):
     print(frequencies2[:20])
 
 
-    fig, ax = plot_resonance_to_pulses(param_df, frequencies1, bands1, bands2)
+    fig, ax = plot_resonance_to_pulses(param_df, frequencies1, bands1, bands2, num_spikes_three_pulses)
+    ax[0].set_xlim((0, 50))
+    ax[1].set_xlim((0, 50))
     if args.save: plt.savefig(f"{output_directory}\\{neuron_name}_compare_T1_3P.png")
     plt.show()
 
@@ -277,4 +289,5 @@ def plot_all_indices(dict, trial_label, params, indices, plot_freq, ref_freq, ou
             fig.suptitle("Membrane potential versus Injected Current", fontweight = 'bold', y = 0.95)
             ax[0].set_title(f"autapse: e = {e}, f = {f}, \u03c4 = {tau}; frequency = {freq_actual}", fontsize = 10)
             plt.savefig(out_dir + f"\\{trial_label.replace(' ', '_')}_idx{i}_f{freq}.png")
+            plt.close(fig)
 
