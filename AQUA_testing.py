@@ -1,21 +1,3 @@
-"""
-Automate the checking of the AQUA models.
-
-- Need to make sure that the batch and single neuron models are 
-consistent with each other.
-
-- Need to test different edge cases basically.
-
-
-
-"""
-
-import numpy as np
-from AQUA_general import *
-from batchAQUA_general import *
-import unittest
-
-class Test_AQUA(unittest.TestCase):
-
-    def test_singleNeuron():
-        # make sure that 
+version https://git-lfs.github.com/spec/v1
+oid sha256:8c7ce45e37cd2d3670a2ebb2f3d1cd15a676f09ebb6e3739b5a2bc1fffada862
+size 382
