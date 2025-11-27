@@ -1,34 +1,3 @@
-The aim of this file is to identify some computational features of neurons with and without autapses. Results are interpreted in terms of movements of the nullcline due to the autaptic current.
-Autapse params an be sampled around some realistic values. 
-    - time delay (tau); represents essentially synaptic transmission time + PSC rise time (0.3-0.5 ms)
-    - conductance (f); represents the maximum PSC.
-    - decay time constant (1/e); represents the time for PSC to reach ~30% of max conductance.
-
-Alternative variables:  Effective time of synapse (tau + 1/e) and effective input (integral of PSC)
-
-
-COMPONENTS:
-
-* config file:
-    - passes neuron parameters. 
-    - Sections: [NEURON]: neuron params; 
-                [SIMULATION]: T, dt, N_iter, ...;  
-                [OUTPUT]: output filenames;
-                [AUTAPSE??]: autapse params??;
-                .... e.g. [TESTS]
-    - CLI.py and CF.py are used for reading in params.
-
-* main.py
-    - Will create the neuron/batch of neurons and run the tests described in 'project_plan'
-    TESTS: 
-    - Plots for each test are generated and saved
-
-* stimulus.py
-    - contains functions for generating different stimulation profiles.
-    - e.g. steps, ramps, vibrations, white noise, various spike train statistics...
-
-* functions.py
-    - functions carrying out the different tests and returning desired results.
-
-* plotting_functions.py
-    - functions for plotting results from each tests. Returns fig and axis objects to be customised.
+version https://git-lfs.github.com/spec/v1
+oid sha256:0f680ae196f5443fcdd5505b38eb33371384d04aab3fec0651d77f609fff86fe
+size 1498

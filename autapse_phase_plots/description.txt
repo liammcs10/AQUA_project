@@ -1,21 +1,3 @@
-This folder will contain an attempt at plotting the phase portrait of the autaptic neuron. 
-
-It will need to be 3-dimensional and the autaptic current will be treated as a time-varying addition
-to the injected current.
-Generally, a plot of v-u. 
-- Flow field
-- nullclines corresponding to df/dt = 0
-- equilibria?
-- In this case a 3rd dimension might be useful for time as the autaptic parameter is time-varying.
-- How to show limit cycle attractors? These might show up in the flow field...
-
-* This may serve as a helpful way of understanding how autaptic parameters work together
-    1) large e scenario: autaptic current decays very rapidly, essentially a jolt of the membrane potential up or down.
-    2) small f scenario: autaptic current is essentially negligible and doesn't result in a major change. Is relative to I_inj anyway.
-
-* autapse would effectively produce a time-varying shift of the v-nullcline (up or down, depending on excitatory or inhibitory). 
-Presumably a bifurcation has already occurred, so we are now looking at bifurcations of limit cycles (izhikevich chpt 6.2).
-
-Might be interesting to use *plotly* for interactive 3d plots. 
-
-Not really sure how to visualise. The whole 3D space will change depending on the input current. Could make this a slider?
+version https://git-lfs.github.com/spec/v1
+oid sha256:9618a5920f7fdfe663624f442be923525a67c6614634cece2ea0b40d907f796e
+size 1279
