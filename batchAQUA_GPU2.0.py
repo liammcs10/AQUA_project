@@ -14,6 +14,118 @@ import cupy as cp
 from tqdm import tqdm
 import time
 
+## Creation of the GPU kernel
+
+PREAMBLE = '''
+#include <vector>
+#include <cmath>
+#include <string>
+#include <iostream>
+
+std::vector<double> neuron_model(
+std::vec<double> x,
+double w_delay, 
+double I,
+bool isFS,
+double C,
+double k,
+double v_r,
+double v_t,
+double a,
+double b,
+double e){
+
+    // Check if the state vector is correctly sized
+    if (x.size() != 3) {
+        std::cerr << "Error: State vector x must have 3 elements [v, u, w]." << std::endl;
+        return {0.0, 0.0, 0.0}; 
+    }
+
+    const double v = x[0];
+    const double u = x[1];
+    const double w = x[2];
+
+    // 1. calculate dv/dt
+    double dv = (1.0/C) * (k * (v - v_r) * (v - v_t) - u + w_delay + I);
+
+    // 2. calculate du/dt
+    double du
+
+    if (isFS){
+        double U;
+        if (v < -55.0) {
+            U = 0.0;
+        } else {
+            U = 0.025 * std::pow(v + 55.0, 3.0);
+        }
+
+        du = a * (U - u)
+    } else {
+        du = a * (b * (v - v_r) - u);
+    }
+
+    // 3. calculate dw/dt
+    double dw = -1.0 * e * w;
+
+    //return array
+    return {dv, du, dw}
+}
+
+'''
+
+OPERATION = '''
+// everything inside the for-loop
+
+if (n <= delay_steps){
+    w_tau1 = w_prev[n - delay_steps - 1]
+} else {
+    w_tau1 = X[2, n - delay_steps - 1]
+}
+
+// first RK2 param
+k1 = neuron_model(x, w_tau1, I, isFS, C, k, v_r, v_t, a, b, e)
+
+if (n < delay_steps) {
+    w_tau2 = w_prev[n - delay_steps]
+} else if (delay_steps == 0. || n == delay_steps) {
+    w_tau2 = self.x[2] + k1[2] * dt
+} else {
+    w_tau2 = X[2, std::max(n - delay_steps, 0)]
+}
+
+// second RK2 param
+k2 = neuron_model(x + dt * k1, w_tau2, I, isFS, C, k, v_r, v_t, a, b, e)
+
+x += dt * (k1 + k2)/2
+t += dt
+
+// Check for spike and update
+if (x[0] >= v_peak) {
+    x[0] = c
+    x[1] += d
+    x[2] += f
+    spikes = t
+} else {
+    spikes = std::numeric_limits<double>::quiet_NaN()
+}
+
+// end of loop, values returned are x, t, spikes
+
+'''
+
+
+update_kernel = cp.ElementwiseKernel(
+    name = 'update_kernel',
+    in_params = '''int64 n, float64 dt, bool isFS, float64 k, float64 C, float64 v_r, float64 v_t, float64 v_peak, float64 a, 
+    float64 b, float64 c, float64 d, float64 e, float64 f, float64 tau, std::vector<double> x, float64 t, int delay_steps, std::vec w_prev''',
+    out_params = '''std::vec x_next, std::vec t_next, std::vec spikes''',
+    
+    operation = OPERATION,
+
+    preamble = PREAMBLE
+)
+
+
 class batchAQUA_GPU:
 
     def __init__(self, params_list):
@@ -65,58 +177,49 @@ class batchAQUA_GPU:
 
         if np.unique(t_start) != 1: self.T_FULL = True
     
-    def neuron_model(self, x, w_delay, I):
+
+    def update_batch(self, N_iter, dt, I_inj):
         """
-        update rule for the izhikevich neuron with autapse
-
-        IN
-            x:          value of membrane variables, shape: (N_models, 3)
-            w_delay:    autaptic currents at the time delay, shape: (N_models)
-            I:          injected current, shape: (N_models)
-
-        OUT
-            arr:        numpy array representing all update values.
-                        same shape as x.
+        Update of the AQUA model using the cupy.ElementwiseKernel 'update_batch'
         """
-        v, u, w = x.T
 
-        dv = (1/self.C) * (self.k * (v - self.v_r) * (v - self.v_t) - u + w_delay + I)
-        
-        # du = cp.zeros(cp.shape(u))
-        # FS neurons have a nonlinear u-nullcline.
+        delay_steps = (self.tau / dt).astype(int)
 
-        cond_FS_hyperpolarized = self.isFS & (v < -55)  # is FS and hyperpolarized
-        cond_FS_depolarized = self.isFS & (v >= -55)    # is FS and depolarized 
-        cond_notFS = ~self.isFS # not FS
-        # update FS neuron
-        #du[cond_FS_hyperpolarized] = self.a[cond_FS_hyperpolarized] * (-1. * u[cond_FS_hyperpolarized]) # where neuron is FS and v < -55, U = 0
-        #du[cond_FS_depolarized] = self.a[cond_FS_depolarized] * (0.025 * (v[cond_FS_depolarized] + 55.)**3 - u[cond_FS_depolarized])
-        du_FS_hyp = cp.multiply(self.a, cond_FS_hyperpolarized) * (-1. * cp.multiply(u, cond_FS_hyperpolarized))  # where FS with v < -55, U = 0.
-        du_FS_dep = cp.multiply(self.a, cond_FS_depolarized) * (0.025 * (cp.multiply(v, cond_FS_depolarized)) + 55.)**3 - cp.multiply(u, cond_FS_depolarized)
-        # all other neurons are normal
-        #du[cond_notFS] = self.a[cond_notFS] * (self.b[cond_notFS] * (v[cond_notFS] - self.v_r[cond_notFS]) - u[cond_notFS])
-        du_not_FS = cp.multiply(self.a, cond_notFS) * (cp.multiply(self.b, cond_notFS) * (cp.multiply(v, cond_notFS) - cp.multiply(self.v_r, cond_notFS)) - cp.multiply(u, cond_notFS))
+        # check injected current is a cupy array
+        if isinstance(I_inj, cp.ndarray) == False:
+            I_inj = cp.asarray(I_inj)
 
-        du = du_FS_hyp + du_FS_dep + du_not_FS      # merge du
+        if len(w_prev) == 0:    # if no w_prev passed
+            w_prev = cp.zeros((self.N_models, (cp.max(delay_steps)).astype(int)))
 
-        dw = -1 * self.e * w
+        # Arrays for storing the updates
+        X = cp.zeros((self.N_models, 3, N_iter), dtype = np.float64)
+        X[:, :, 0] = self.x
 
-        return cp.array([dv, du, dw]).T
-    
-    ## Creation of the GPU kernel
-
-    update_batch = cp.ElementwiseKernel(
-        in_params = '''bool isFS, float64 k, float64 C, float64 v_r, float64 v_t, float64 v_peak, float64 a, 
-        float64 b, float64 c, float64 d, float64 e, float64 f, float64 tau, std::vector x, float64 t, int delay_steps'''
+        T = cp.zeros(N_iter)
 
 
-    )
+        x_next = cp.empty_like(self.x)
+        t_next = cp.empty_like(self.t)
+        spikes = cp.zeros((self.N_models, N_iter))
 
 
+        for n in tqdm(cp.arange(N_iter)):
 
+            # run kernel
+            update_kernel(n, dt, self.isFS, self.k, self.C, self.v_r, self.v_t, self.v_peak, self.a, 
+                          self.b, self.c, self.d, self.e, self.f, self.tau, self.x, self.t, delay_steps, w_prev,
+                          x_next, t_next, spikes)
 
+            # update variables
+            self.x, self.t = x_next, t_next
 
+            # append to history
+            X[:, :, n] = self.x
+            T[n] = self.t
+            spikes[:, n] = spikes
 
+        return X, T, spikes
  
 
     def get_params(self, i):
