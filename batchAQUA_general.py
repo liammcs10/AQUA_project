@@ -7,6 +7,8 @@ A batch simulation version of the AQUA class.
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from brian2 import *
+
 
 class batchAQUA:
 
@@ -161,7 +163,7 @@ class batchAQUA:
                 
                 w_tau2 = np.zeros(self.N_models)  
                 bool_idx1 = np.nonzero(delay_steps == 0.0)[0]            
-                bool_idx2 = np.nonzero(delay_steps != 0.0)[0] # WRONG
+                bool_idx2 = np.nonzero(delay_steps != 0.0)[0] 
                 w_tau2[bool_idx1] = self.x[bool_idx1, 2] + k1[bool_idx1, 2] * dt        # update under first condition
                 w_tau2[bool_idx2] = X[bool_idx2, 2, n - delay_steps[bool_idx2]]         # update under other condition
                 k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])           # second RK param
@@ -170,7 +172,7 @@ class batchAQUA:
             self.x = self.x + dt * (k1 + k2)/2
             self.t = self.t + dt
 
-            #Check for spikes and reset
+            # Check for spikes and reset
             idx = np.nonzero(self.x[:, 0] >= self.v_peak) # 1 at indices that need updating
             self.x[idx, 0] = self.c[idx]
             self.x[idx, 1] += self.d[idx]
@@ -184,6 +186,68 @@ class batchAQUA:
         spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
     
         return X, T, spike_times
+
+
+    def meetBrian(self):
+        """
+            Returns the brian2 version of the AQUA model.
+            parameters are pre-initialised aside for I_inj
+            OUT:
+                G:          brian2 NeuronGroup
+                autapses:   brian2 Synapses
+
+        """
+        # neuron equations
+        EQS = '''
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + I))/ms : 1
+        du/dt = (a * (b*(v-v_r) - u))/ms : 1
+        dw/dt = (-e_a*w)/ms : 1
+        C : 1
+        k : 1
+        v_r : 1
+        v_t : 1
+        v_peak : 1
+        I : 1
+        a : 1
+        b : 1
+        c : 1
+        d : 1
+        e_a : 1
+        f : 1
+        '''
+
+        RESET = '''
+        v = c
+        u += d
+        '''
+        G = NeuronGroup(self.N_models, EQS, threshold = 'v >= v_peak', reset = RESET, method = 'rk2')
+
+
+        autapses = Synapses(G, G, on_pre = 'w += f')
+        autapses.connect(condition = 'i == j')
+        autapses.delay = self.tau*ms
+
+
+        # Intialise variables
+        G.v = self.x[:, 0]
+        G.u = self.x[:, 1]
+        G.w = self.x[:, 2]
+        G.C = self.C
+        G.k = self.k
+        G.v_r = self.v_r
+        G.v_t = self.v_t
+        G.v_peak = self.v_peak
+        G.a = self.a
+        G.b = self.b
+        G.c = self.c
+        G.d = self.d
+        G.e_a = self.e
+        G.f = self.f
+
+
+        return G, autapses
+
+
 
     def get_params(self, i):
         # returns the dictionary of params for neuron i
