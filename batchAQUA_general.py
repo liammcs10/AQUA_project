@@ -137,11 +137,10 @@ class batchAQUA:
             if n <= np.max(delay_steps): # early in sim
 
                 w_tau1 = np.zeros(self.N_models)                
-                tau_idx = np.nonzero(~(n <= delay_steps))                        # indices that need updating
-                prev_idx = np.nonzero(n <= delay_steps)                          # where delay_steps extends prior to the sim
-                w_tau1[tau_idx] = X[tau_idx, 2, n - delay_steps[tau_idx]-1]       # get w at the delay
+                tau_idx = np.nonzero(~(n <= delay_steps))                             # indices that need updating
+                prev_idx = np.nonzero(n <= delay_steps)                               # where delay_steps extends prior to the sim
+                w_tau1[tau_idx] = X[tau_idx, 2, n - delay_steps[tau_idx]-1]           # get w at the delay
                 w_tau1[prev_idx] = w_prev[prev_idx, n - delay_steps[prev_idx] - 1]
-
                 
                 k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])            # first RK param
                 
@@ -169,7 +168,7 @@ class batchAQUA:
                 k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])           # second RK param
 
             # update with RK2
-            self.x = self.x + dt * (k1 + k2)/2
+            self.x = self.x + dt * (k1 + k2)/2.
             self.t = self.t + dt
 
             # Check for spikes and reset
