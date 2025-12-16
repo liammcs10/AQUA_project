@@ -9,7 +9,6 @@ Some functions for plotting/animating the phase portrait surface.
 
 """
 
-
 import numpy as np
 import matplotlib.pyplot as plt
 import mpl_toolkits.mplot3d.axes3d as axes3d
@@ -17,7 +16,7 @@ from matplotlib.colors import LightSource
 import matplotlib.animation as animation
 # create utils file?
 
-
+from AQUA_general import AQUA
 from batchAQUA_general import batchAQUA
 
 
@@ -31,7 +30,7 @@ https://towardsdatascience.com/creating-a-gradient-descent-animation-in-python-3
 make_Z = batchAQUA.neuron_model
 
 """
-def make_Z(V, U, W, I, batch):
+def make_Z(V, U, W, I, dt, batch):
     """
     Calculate the gradient vector for each point in meshgrid and normalise.
     """
@@ -46,12 +45,30 @@ def make_Z(V, U, W, I, batch):
 
     batch.Initialise(x_start, t_start)
 
-    grad = batch.neuron_model(batch.x, 0., I)
+    grad1 = batch.neuron_model(batch.x, 0., I)
+    grad2 = batch.neuron_model(batch.x + dt*grad1, 0., I)
+
+    grad = dt*(grad1 + grad2)/2.
 
     Z = np.linalg.norm(grad, axis = 1)
     Z = np.reshape(Z, shape = np.shape(V))
     
     return Z
+
+
+def make_Z_from_traj(X):
+    """
+        X: ndarray neuron trajectory (3, N_timesteps)
+        I: injected current (N_timesteps, )
+        W:
+    """
+
+    grad_vec = np.diff(X, axis = 1)
+
+    print(np.shape(grad_vec))
+    
+    return np.linalg.norm(grad_vec, axis = 0)
+
 
 def plot_surface(ax, V, U, Z):
     """
@@ -72,7 +89,40 @@ def plot_surface(ax, V, U, Z):
 
     return surf
 
+def draw_trajectory(x_ini, param, T, dt, I_h, fig, ax):
+    """
+    Draw the trajectory on a 3D surface.
+    """
 
+    N_iter = int(1000*T/dt)
+
+    I_inj = I_h*np.ones(N_iter)
+
+    t_start = np.array([0.])
+
+    neuron = AQUA(param)
+    neuron.Initialise(x_ini, t_start)
+
+    X, _, _ = neuron.update_RK2(dt, N_iter, I_inj)
+
+    Z = make_Z_from_traj(X)
+    Z = np.append(Z, 0)
+
+    new_axis = fig.add_axes(ax.get_position(), projection = '3d',
+                            xlim = ax.get_xlim(),
+                            ylim = ax.get_ylim(),
+                            zlim = ax.get_zlim(),
+                            facecolor = 'none',)
+    new_axis.view_init(azim = ax.azim, elev = ax.elev)
+    new_axis.set_zorder(1)
+    ax.set_zorder(0)
+
+    new_axis.plot3D(X[0, :], X[1, :], Z, color = 'red', alpha = 0.7)
+    new_axis.plot3D(X[0, 0], X[1, 0], Z[0], ms = 2.5, c = 'black', marker = 'o')
+
+    new_axis.set_axis_off()
+
+    return fig, ax, new_axis
 
 def make_animation(V, U, W, I, batch, plot_surf, save = False):
     """
@@ -93,9 +143,11 @@ def make_animation(V, U, W, I, batch, plot_surf, save = False):
         Z = make_Z(V, U, W, I[:, i], batch)
         surf = plot_surf(ax, V, U, Z)
         return (surf,)
-
+    
+    ax.view_init(elev = 50, azim = 270)
+    
     ani = animation.FuncAnimation(fig, animate, fargs = (surf,),
-                                  interval=10, blit=True, frames = 200)
+                                  interval=10, blit=True, frames = np.shape(I)[1])
                     
     if save:
         ani.save('phase_portrait_animation.mp4', fps = 24)
