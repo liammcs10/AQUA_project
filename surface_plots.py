@@ -49,11 +49,22 @@ def make_Z(V, U, W, I, dt, batch):
     grad2 = batch.neuron_model(batch.x + dt*grad1, 0., I)
 
     grad = dt*(grad1 + grad2)/2.
+    x_new = x_start + grad
 
-    Z = np.linalg.norm(grad, axis = 1)
-    Z = np.reshape(Z, shape = np.shape(V))
+    print(np.shape(x_new))
+    print(np.shape(np.linalg.norm(x_new, axis = 1)))
+
+    sign_Z = np.sign(np.linalg.norm(x_new, axis = 1) - np.linalg.norm(x_start, axis = 1))
     
-    return Z
+    print("- - - -")
+    print(np.shape(sign_Z))
+    print(sign_Z[:10])
+
+    #Z = sign_Z * np.linalg.norm(grad, axis = 1)
+    #Z = np.reshape(Z, shape = np.shape(V))
+    
+    #return Z
+    return np.reshape(sign_Z, shape = (np.shape(V)))
 
 
 def make_Z_from_traj(X):
@@ -64,10 +75,15 @@ def make_Z_from_traj(X):
     """
 
     grad_vec = np.diff(X, axis = 1)
-
     print(np.shape(grad_vec))
-    
-    return np.linalg.norm(grad_vec, axis = 0)
+    print(np.shape(np.linalg.norm(X, axis = 0)))
+    print(np.shape(np.diff(np.linalg.norm(X, axis = 0))))
+    sign_vec = np.sign(np.diff(np.linalg.norm(X, axis = 0)))
+    print(np.shape(sign_vec))
+
+    print(np.shape(np.linalg.norm(grad_vec, axis = 0)))
+
+    return sign_vec * np.linalg.norm(grad_vec, axis = 0)
 
 
 def plot_surface(ax, V, U, Z):
@@ -118,7 +134,7 @@ def draw_trajectory(x_ini, param, T, dt, I_h, fig, ax):
     ax.set_zorder(0)
 
     new_axis.plot3D(X[0, :], X[1, :], Z, color = 'red', alpha = 0.7)
-    new_axis.plot3D(X[0, 0], X[1, 0], Z[0], ms = 2.5, c = 'black', marker = 'o')
+    new_axis.plot3D(X[0, 0], X[1, 0], Z[0], ms = 3.5, c = 'red', marker = 'o')
 
     new_axis.set_axis_off()
 
