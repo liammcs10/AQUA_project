@@ -14,6 +14,9 @@ import matplotlib.pyplot as plt
 import mpl_toolkits.mplot3d.axes3d as axes3d
 from matplotlib.colors import LightSource
 import matplotlib.animation as animation
+from scipy.fftpack import dst, idst
+from scipy.sparse import lil_matrix
+from scipy.sparse.linalg import lsqr
 # create utils file?
 
 from AQUA_general import AQUA
@@ -30,7 +33,7 @@ https://towardsdatascience.com/creating-a-gradient-descent-animation-in-python-3
 make_Z = batchAQUA.neuron_model
 
 """
-def make_Z(V, U, W, I, dt, batch):
+def make_Z_cumsum(V, U, W, I, dt, batch):
     """
     Calculate the gradient vector for each point in meshgrid and normalise.
     """
@@ -49,22 +52,67 @@ def make_Z(V, U, W, I, dt, batch):
     grad2 = batch.neuron_model(batch.x + dt*grad1, 0., I)
 
     grad = dt*(grad1 + grad2)/2.
-    x_new = x_start + grad
+    grad = np.reshape(grad, shape = (np.shape(V)[0], np.shape(V)[1], 3))
+    print(grad[:5])
+    # surface reconstruction with cumsum
+    Z_x = np.cumsum(grad[:, :, 0], axis = 1) * (V[0, 0] - V[0, 1])
+    Z_y = np.cumsum(grad[:, :, 1], axis = 0) * (U[0, 0] - U[1, 0])
+    Z = Z_x + Z_y
+    print(np.shape(Z))
 
-    print(np.shape(x_new))
-    print(np.shape(np.linalg.norm(x_new, axis = 1)))
+    return Z
 
-    sign_Z = np.sign(np.linalg.norm(x_new, axis = 1) - np.linalg.norm(x_start, axis = 1))
+
+def make_Z_sparse_least_squares(V, U, W, I, dt, batch):
+    """
+    Calculate the surface from gradients using sparse least squares.
+    """
+    N_neurons = batch.N_models
+    # first, initialise batch with mesh coords
+    x_start = np.zeros((N_neurons, 3))
+    x_start[:, 0] = V.flatten()
+    x_start[:, 1] = U.flatten()
+    x_start[:, 2] = W.flatten()
+
+    t_start = np.zeros(N_neurons)
+
+    batch.Initialise(x_start, t_start)
+
+    grad1 = batch.neuron_model(batch.x, 0., I)
+    grad2 = batch.neuron_model(batch.x + dt*grad1, 0., I)
+
+    grad = dt*(grad1 + grad2)/2.
+    grad = np.reshape(grad, shape = (np.shape(V)[0], np.shape(V)[1], 3))
     
-    print("- - - -")
-    print(np.shape(sign_Z))
-    print(sign_Z[:10])
-
-    #Z = sign_Z * np.linalg.norm(grad, axis = 1)
-    #Z = np.reshape(Z, shape = np.shape(V))
+    # Now implement surface fitting
+    rows, cols = np.shape(V)
+    #dx = V[0, 0] - V[0, 1]
+    #dy = U[0, 0] - U[1, 0]
+    dx = 1
+    dy = 1
     
-    #return Z
-    return np.reshape(sign_Z, shape = (np.shape(V)))
+    A = lil_matrix((2 * N_neurons, N_neurons))
+    b = np.zeros(2*N_neurons)
+
+    for r in range(rows):
+        for c in range(cols):
+            idx = r * cols + c
+
+            if c < cols - 1:
+                A[2 * idx, idx] = -1
+                A[2 * idx, idx + 1] = 1
+                b[2 * idx] = U[r, c] * dx
+    
+            # Vertical constraint (dV/dy)
+            if r < rows - 1:
+                A[2 * idx + 1, idx] = -1
+                A[2 * idx + 1, idx + cols] = 1
+                b[2 * idx + 1] = V[r, c] * dy
+    
+    # Solve the least squares problem
+    z_solution = lsqr(A, b)[0]
+    return z_solution.reshape((rows, cols))
+
 
 
 def make_Z_from_traj(X):
