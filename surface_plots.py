@@ -33,9 +33,11 @@ https://towardsdatascience.com/creating-a-gradient-descent-animation-in-python-3
 make_Z = batchAQUA.neuron_model
 
 """
-def make_Z_cumsum(V, U, W, I, dt, batch):
+
+def make_Z(V, U, W, I, dt, batch):
     """
-    Calculate the gradient vector for each point in meshgrid and normalise.
+    Create a surface flow field from the magnitude of the gradient.
+
     """
     N_neurons = batch.N_models
     # first, initialise batch with mesh coords
@@ -53,90 +55,45 @@ def make_Z_cumsum(V, U, W, I, dt, batch):
 
     grad = dt*(grad1 + grad2)/2.
     grad = np.reshape(grad, shape = (np.shape(V)[0], np.shape(V)[1], 3))
-    print(grad[:5])
-    # surface reconstruction with cumsum
-    Z_x = np.cumsum(grad[:, :, 0], axis = 1) * (V[0, 0] - V[0, 1])
-    Z_y = np.cumsum(grad[:, :, 1], axis = 0) * (U[0, 0] - U[1, 0])
-    Z = Z_x + Z_y
-    print(np.shape(Z))
+    # grad has shape: (N, N, 3). grad_x = grad[:, :, 0]
+
+    Z = np.sqrt(grad[:, :, 0]**2 + grad[:, :, 1]**2)
 
     return Z
 
 
-def make_Z_sparse_least_squares(V, U, W, I, dt, batch):
+def make_Z_from_traj(X, V, U, Z):
     """
-    Calculate the surface from gradients using sparse least squares.
-    """
-    N_neurons = batch.N_models
-    # first, initialise batch with mesh coords
-    x_start = np.zeros((N_neurons, 3))
-    x_start[:, 0] = V.flatten()
-    x_start[:, 1] = U.flatten()
-    x_start[:, 2] = W.flatten()
-
-    t_start = np.zeros(N_neurons)
-
-    batch.Initialise(x_start, t_start)
-
-    grad1 = batch.neuron_model(batch.x, 0., I)
-    grad2 = batch.neuron_model(batch.x + dt*grad1, 0., I)
-
-    grad = dt*(grad1 + grad2)/2.
-    grad = np.reshape(grad, shape = (np.shape(V)[0], np.shape(V)[1], 3))
-    
-    # Now implement surface fitting
-    rows, cols = np.shape(V)
-    #dx = V[0, 0] - V[0, 1]
-    #dy = U[0, 0] - U[1, 0]
-    dx = 1
-    dy = 1
-    
-    A = lil_matrix((2 * N_neurons, N_neurons))
-    b = np.zeros(2*N_neurons)
-
-    for r in range(rows):
-        for c in range(cols):
-            idx = r * cols + c
-
-            if c < cols - 1:
-                A[2 * idx, idx] = -1
-                A[2 * idx, idx + 1] = 1
-                b[2 * idx] = U[r, c] * dx
-    
-            # Vertical constraint (dV/dy)
-            if r < rows - 1:
-                A[2 * idx + 1, idx] = -1
-                A[2 * idx + 1, idx + cols] = 1
-                b[2 * idx + 1] = V[r, c] * dy
-    
-    # Solve the least squares problem
-    z_solution = lsqr(A, b)[0]
-    return z_solution.reshape((rows, cols))
-
-
-
-def make_Z_from_traj(X):
-    """
+    Map the trajectory onto the potential surface
         X: ndarray neuron trajectory (3, N_timesteps)
         I: injected current (N_timesteps, )
         W:
     """
 
+    """
     grad_vec = np.diff(X, axis = 1)
-    print(np.shape(grad_vec))
-    print(np.shape(np.linalg.norm(X, axis = 0)))
-    print(np.shape(np.diff(np.linalg.norm(X, axis = 0))))
-    sign_vec = np.sign(np.diff(np.linalg.norm(X, axis = 0)))
-    print(np.shape(sign_vec))
 
-    print(np.shape(np.linalg.norm(grad_vec, axis = 0)))
+    Z = np.sqrt(grad_vec[0, :]**2 + grad_vec[1, :]**2)
 
-    return sign_vec * np.linalg.norm(grad_vec, axis = 0)
+    return Z
+    """
+    V_range = V[0, :]
+    U_range = U[:, 0]
+
+    traj_potential = np.zeros(X.shape[1])
+
+    for k in range(X.shape[1]):
+        V_idx = np.argmin(np.abs(V_range - X[0, k]))
+        U_idx = np.argmin(np.abs(U_range - X[1, k]))
+        traj_potential[k] = Z[V_idx, U_idx]
+    
+    return traj_potential
+
 
 
 def plot_surface(ax, V, U, Z):
     """
-    Plot a surface
+        Plot a surface.
     """
 
     cmap = plt.cm.terrain
@@ -153,9 +110,9 @@ def plot_surface(ax, V, U, Z):
 
     return surf
 
-def draw_trajectory(x_ini, param, T, dt, I_h, fig, ax):
+def draw_trajectory(x_ini, param, T, dt, I_h, V, U, Z_surf, fig, ax):
     """
-    Draw the trajectory on a 3D surface.
+        Draw the trajectory on a 3D surface.
     """
 
     N_iter = int(1000*T/dt)
@@ -169,8 +126,8 @@ def draw_trajectory(x_ini, param, T, dt, I_h, fig, ax):
 
     X, _, _ = neuron.update_RK2(dt, N_iter, I_inj)
 
-    Z = make_Z_from_traj(X)
-    Z = np.append(Z, 0)
+    Z = make_Z_from_traj(X, V, U, Z_surf)
+    # Z = np.append(Z, 0)
 
     new_axis = fig.add_axes(ax.get_position(), projection = '3d',
                             xlim = ax.get_xlim(),
