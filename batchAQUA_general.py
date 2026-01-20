@@ -191,16 +191,34 @@ class batchAQUA:
         """
             Returns the brian2 version of the AQUA model.
             parameters are pre-initialised aside for I_inj
+
+            * NEED TO DEFINE A POPULATION OF FS NEURONS SEPARATELY *
+            * FROM OTHER TYPES                                     *
+
             OUT:
                 G:          brian2 NeuronGroup
                 autapses:   brian2 Synapses
 
         """
-        # neuron equations
-        EQS = '''
+        # separate neuron equation for FS
+
+        if np.all(self.isFS == 1):
+            # U = (v < -55) ? 0.025*(v + 55)**3 : 0. : 1
+            print("ALL FS!!!")
+            ODEs = '''
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + I))/ms : 1
+        dw/dt = (-e_a*w)/ms : 1
+        du/dt = a*(int(v>=-55)*(0.025*(v+55)**3) - u)/ms : 1'''
+        elif np.all(self.isFS == 0):
+            ODEs = '''
         dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + I))/ms : 1
         du/dt = (a * (b*(v-v_r) - u))/ms : 1
-        dw/dt = (-e_a*w)/ms : 1
+        dw/dt = (-e_a*w)/ms : 1'''
+        else:
+            print("Cannot mix FS and non-FS populations!!!")
+            return
+
+        variables = '''
         C : 1
         k : 1
         v_r : 1
@@ -215,6 +233,12 @@ class batchAQUA:
         f : 1
         '''
 
+        EQS = ODEs + variables
+
+        print(" - - - - Equations - - - - ")
+        eqs = Equations(EQS)
+        print(str(eqs))
+
         RESET = '''
         v = c
         u += d
@@ -227,10 +251,12 @@ class batchAQUA:
         autapses.delay = self.tau*ms
 
 
-        # Intialise variables
+        # Intialise conditions
         G.v = self.x[:, 0]
         G.u = self.x[:, 1]
         G.w = self.x[:, 2]
+
+        # initialise variables
         G.C = self.C
         G.k = self.k
         G.v_r = self.v_r
@@ -245,7 +271,6 @@ class batchAQUA:
 
 
         return G, autapses
-
 
 
     def get_params(self, i):
