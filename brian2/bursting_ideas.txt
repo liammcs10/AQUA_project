@@ -1,11 +1,14 @@
 Investigate the transition from RS neurons to IB using only autaptic feedback. 
 Compare to descriptions of IB activity from izhikevich textbook
 
+Following can be implemented with autapse:
 
 (1) Bursting at the start of a train, followed by tonic firing
     -> Easily done with simple autapse model
 
 (2) Complex, repeating bursts (almost chattering)
+    -> Longer, repeated bursts can be done with normal autapse and different
+    adaptation constants.
     -> Slower biexponential autapse model.
 
 (3) Bursts with increasing (or decreasing) ISIs
@@ -16,3 +19,10 @@ Compare to descriptions of IB activity from izhikevich textbook
     -> Biexponential autapse
     -> Super slow recovery current to block more bursts?
 
+
+These effects depend on a number of variables:
+    - autapse params (e, f, tau, or t_a1/t_a2)
+    - adaptation params (a, d)
+    - driving current (I)
+
+* Need to map out where in parameter-space you can get bursting.
