@@ -187,7 +187,7 @@ class batchAQUA:
         return X, T, spike_times
 
 
-    def meetBrian(self):
+    def meetBrian(self, biexponential = False, t_a1 = 1., t_a2 = 5.):
         """
             Returns the brian2 version of the AQUA model.
             parameters are pre-initialised aside for I_inj
@@ -200,24 +200,37 @@ class batchAQUA:
                 autapses:   brian2 Synapses
 
         """
-        # separate neuron equation for FS
 
+        print(f"DECAYS: {t_a1} and {t_a2}")
+        print((t_a1/t_a2) ** (t_a1/(t_a2 - t_a1)))
+
+        # separate neuron equation for FS
         if np.all(self.isFS == 1):
             # U = (v < -55) ? 0.025*(v + 55)**3 : 0. : 1
             print("ALL FS!!!")
             ODEs = '''
         dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + I))/ms : 1
-        dw/dt = (-e_a*w)/ms : 1
         du/dt = a*(int(v>=-55)*(0.025*(v+55)**3) - u)/ms : 1'''
         elif np.all(self.isFS == 0):
             ODEs = '''
         dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + I))/ms : 1
-        du/dt = (a * (b*(v-v_r) - u))/ms : 1
-        dw/dt = (-e_a*w)/ms : 1'''
+        du/dt = (a * (b*(v-v_r) - u))/ms : 1'''
         else:
             print("Cannot mix FS and non-FS populations!!!")
             return
 
+        if biexponential:   # biexponential autapse
+            dw = '''
+        dw/dt = ((t_a2 / t_a1) ** (t_a1 / (t_a2 - t_a1))*x-w)/t_a1/ms : 1
+        dx/dt = -x/t_a2/ms : 1
+        t_a1 : 1
+        t_a2 : 1
+        '''
+        else:   # standard autapse model
+            dw = '''
+        dw/dt = (-e_a*w)/ms : 1
+        e_a : 1
+        '''
         variables = '''
         C : 1
         k : 1
@@ -229,11 +242,10 @@ class batchAQUA:
         b : 1
         c : 1
         d : 1
-        e_a : 1
         f : 1
         '''
 
-        EQS = ODEs + variables
+        EQS = ODEs + dw + variables
 
         print(" - - - - Equations - - - - ")
         eqs = Equations(EQS)
@@ -243,10 +255,18 @@ class batchAQUA:
         v = c
         u += d
         '''
+
+
         G = NeuronGroup(self.N_models, EQS, threshold = 'v >= v_peak', reset = RESET, method = 'rk2')
 
 
-        autapses = Synapses(G, G, on_pre = 'w += f')
+        if biexponential:
+            syn_reset = 'x += f'
+        else:
+            syn_reset = 'w += f'
+        
+
+        autapses = Synapses(G, G, on_pre = syn_reset)
         autapses.connect(condition = 'i == j')
         autapses.delay = self.tau*ms
 
@@ -266,8 +286,14 @@ class batchAQUA:
         G.b = self.b
         G.c = self.c
         G.d = self.d
-        G.e_a = self.e
         G.f = self.f
+
+        # split btw biexponential or not
+        if biexponential:
+            G.t_a1 = t_a1
+            G.t_a2 = t_a2
+        else:
+            G.e_a = self.e
 
 
         return G, autapses
