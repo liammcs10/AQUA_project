@@ -55,3 +55,72 @@ def step_current(N_iter, dt, y_0, delay, I_h):
     delay_steps = int(delay / dt)
     
     return np.concatenate((y_0 * np.ones(delay_steps), I_h * np.ones(N_iter - delay_steps)))
+
+def spikes_from_dist(inverse_cdf, N_iter, dt, seed = None):
+    """
+    generates a spike train with ISIs sampled from a pre-defined distribution.
+    NEEDS VERIFYING AND FIXING
+    
+    Params:
+        inverse_cdf:    function, defines the inverse cumulative density function of the desired distribution
+        N_iter:         length of the return array containing spikes
+        dt:             timestep in ms
+        seed;           seed for the random number generator
+    
+    returns
+        I:              array (N_iter, )
+                        contains spikes with ISIs distributed according to the desired distribution.
+                        spikes have unit height.
+    """
+    I = np.zeros(N_iter)        # array to store spike train
+    T = N_iter * dt             # duration of the stimulus [ms]
+    print(T)
+    rng = np.random.default_rng(seed = seed)        # specify the seed for reproducibility
+    u = rng.uniform(size = N_iter)     # random samples from uniform distribution [0, 1)
+
+    x = inverse_cdf(u) # array of lenght N_iter, element is an ISI in ms
+
+    t_spikes = np.cumsum(x)     # array of spike times [ms]
+    t_spikes = t_spikes[np.cumsum(t_spikes) < T] # only keep the spike times in the trial time.
+
+    t_i = (t_spikes / dt).astype(int) # spike times in units of I indices
+
+    I[t_i] += 1
+
+    return I.astype(int), x
+
+def spikes_constant(N_iter, dt, y_0, ISI, N_spikes, spike_height, spike_duration = 1, delay = 500):
+    """
+    Create an input spike train (of N_spikes) with a fixed ISI, T.
+    """
+    
+    I = y_0 * np.ones(N_iter)
+
+    delay_steps = int(delay/dt)
+    ISI_steps = int(ISI/dt)
+    spike_duration_steps = int(spike_duration/dt)
+
+    #pulse_times = np.arange(stop = ISI*N_spikes, step = ISI)
+    #print(pulse_times)
+    for i in range(N_spikes):
+        I[delay_steps + i*ISI_steps: delay_steps + i*ISI_steps + spike_duration_steps] += spike_height
+    
+
+    return I
+
+
+def sinusoid(N_iter, dt, freq, amp, phase):
+    """
+        N_iter:     number of timesteps
+        dt:         timestep
+        freq:       frequency in Hz
+        amp:        in pA
+        phase:      degrees
+    """
+    x = np.linspace(0, N_iter * dt, N_iter)
+
+    freq  *= 2*np.pi/1000          # frequency in radians per s
+    phase *= 2*np.pi              # phase in degrees
+    return amp*np.sin(freq*x + phase), x
+
+
