@@ -1,0 +1,23 @@
+Shown in brian2 that many properties of IB neurons can be more or less reproduced
+using the RS neuron with autapse.
+
+Here we start to investigate the computational properties 
+(i.e. slope detection and encoding, or coincidence detection).
+    -> ref. Kepecs et al. (2002) - "Bursting Neurons Signal Input Slope"
+
+Will try to do this on the basic autapse model and get as far as possible with it.
+* compare all results to standard RS neuron!
+
+Parameters:
+    RS = {'name': 'RS', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
+     'a': 0.03, 'b': -2, 'c': -50, 'd': 100, 'e': 0.2, 'f': 250., 'tau': 0.0}
+
+     Can produce burst doublets. These preferentially occur for currents just above threshold (this is good)
+
+Interesting idea: coupling pyramidal cell to an inhibitory neuron which receives the time series
+can create the conditions in which bursting signals negative gradients
+    -> mechanism: tonic drive to pyramidal neuron. downslope in time series creates a decrease
+    in inhibitiion corresponding to an increase in excitation in the pyramidal cell.
+
+    
+
