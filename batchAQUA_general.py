@@ -7,6 +7,8 @@ A batch simulation version of the AQUA class.
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from brian2 import *
+
 
 class batchAQUA:
 
@@ -135,11 +137,10 @@ class batchAQUA:
             if n <= np.max(delay_steps): # early in sim
 
                 w_tau1 = np.zeros(self.N_models)                
-                tau_idx = np.nonzero(~(n <= delay_steps))                        # indices that need updating
-                prev_idx = np.nonzero(n <= delay_steps)                          # where delay_steps extends prior to the sim
-                w_tau1[tau_idx] = X[tau_idx, 2, n - delay_steps[tau_idx]-1]       # get w at the delay
+                tau_idx = np.nonzero(~(n <= delay_steps))                             # indices that need updating
+                prev_idx = np.nonzero(n <= delay_steps)                               # where delay_steps extends prior to the sim
+                w_tau1[tau_idx] = X[tau_idx, 2, n - delay_steps[tau_idx]-1]           # get w at the delay
                 w_tau1[prev_idx] = w_prev[prev_idx, n - delay_steps[prev_idx] - 1]
-
                 
                 k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])            # first RK param
                 
@@ -161,16 +162,16 @@ class batchAQUA:
                 
                 w_tau2 = np.zeros(self.N_models)  
                 bool_idx1 = np.nonzero(delay_steps == 0.0)[0]            
-                bool_idx2 = np.nonzero(delay_steps != 0.0)[0] # WRONG
+                bool_idx2 = np.nonzero(delay_steps != 0.0)[0] 
                 w_tau2[bool_idx1] = self.x[bool_idx1, 2] + k1[bool_idx1, 2] * dt        # update under first condition
                 w_tau2[bool_idx2] = X[bool_idx2, 2, n - delay_steps[bool_idx2]]         # update under other condition
                 k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])           # second RK param
 
             # update with RK2
-            self.x = self.x + dt * (k1 + k2)/2
+            self.x = self.x + dt * (k1 + k2)/2.
             self.t = self.t + dt
 
-            #Check for spikes and reset
+            # Check for spikes and reset
             idx = np.nonzero(self.x[:, 0] >= self.v_peak) # 1 at indices that need updating
             self.x[idx, 0] = self.c[idx]
             self.x[idx, 1] += self.d[idx]
@@ -184,6 +185,119 @@ class batchAQUA:
         spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
     
         return X, T, spike_times
+
+
+    def meetBrian(self, biexponential = False, t_a1 = 1., t_a2 = 5.):
+        """
+            Returns the brian2 version of the AQUA model.
+            parameters are pre-initialised aside for I_inj
+
+            * NEED TO DEFINE A POPULATION OF FS NEURONS SEPARATELY *
+            * FROM OTHER TYPES                                     *
+
+            OUT:
+                G:          brian2 NeuronGroup
+                autapses:   brian2 Synapses
+
+        """
+
+        print(f"DECAYS: {t_a1} and {t_a2}")
+        print((t_a1/t_a2) ** (t_a1/(t_a2 - t_a1)))
+
+        # separate neuron equation for FS
+        if np.all(self.isFS == 1):
+            # U = (v < -55) ? 0.025*(v + 55)**3 : 0. : 1
+            print("ALL FS!!!")
+            ODEs = '''
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + I))/ms : 1
+        du/dt = a*(int(v>=-55)*(0.025*(v+55)**3) - u)/ms : 1'''
+        elif np.all(self.isFS == 0):
+            ODEs = '''
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + I))/ms : 1
+        du/dt = (a * (b*(v-v_r) - u))/ms : 1'''
+        else:
+            print("Cannot mix FS and non-FS populations!!!")
+            return
+
+        if biexponential:   # biexponential autapse
+            dw = '''
+        dw/dt = ((t_a2 / t_a1) ** (t_a1 / (t_a2 - t_a1))*x-w)/t_a1/ms : 1
+        dx/dt = -x/t_a2/ms : 1
+        t_a1 : 1
+        t_a2 : 1
+        '''
+        else:   # standard autapse model
+            dw = '''
+        dw/dt = (-e_a*w)/ms : 1
+        e_a : 1
+        '''
+        variables = '''
+        C : 1
+        k : 1
+        v_r : 1
+        v_t : 1
+        v_peak : 1
+        I : 1
+        a : 1
+        b : 1
+        c : 1
+        d : 1
+        f : 1
+        '''
+
+        EQS = ODEs + dw + variables
+
+        print(" - - - - Equations - - - - ")
+        eqs = Equations(EQS)
+        print(str(eqs))
+
+        RESET = '''
+        v = c
+        u += d
+        '''
+
+
+        G = NeuronGroup(self.N_models, EQS, threshold = 'v >= v_peak', reset = RESET, method = 'rk2')
+
+
+        if biexponential:
+            syn_reset = 'x += f'
+        else:
+            syn_reset = 'w += f'
+        
+
+        autapses = Synapses(G, G, on_pre = syn_reset)
+        autapses.connect(condition = 'i == j')
+        autapses.delay = self.tau*ms
+
+
+        # Intialise conditions
+        G.v = self.x[:, 0]
+        G.u = self.x[:, 1]
+        G.w = self.x[:, 2]
+
+        # initialise variables
+        G.C = self.C
+        G.k = self.k
+        G.v_r = self.v_r
+        G.v_t = self.v_t
+        G.v_peak = self.v_peak
+        G.a = self.a
+        G.b = self.b
+        G.c = self.c
+        G.d = self.d
+        G.f = self.f
+
+        # split btw biexponential or not
+        if biexponential:
+            G.t_a1 = t_a1
+            G.t_a2 = t_a2
+        else:
+            G.e_a = self.e
+
+
+        return G, autapses
+
 
     def get_params(self, i):
         # returns the dictionary of params for neuron i
