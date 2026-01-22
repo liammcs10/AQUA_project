@@ -8,6 +8,18 @@ Here we start to investigate the computational properties
 Will try to do this on the basic autapse model and get as far as possible with it.
 * compare all results to standard RS neuron!
 
+Bursting requires 2 timescales:
+    - fast inward currents (responsible for burst initiation and maintainance) -> autaptic currents
+    - slow outward current (responsible for burst shutoff and recharge) (termed slow resonant or *gating* current)
+        -> additional adaptation currents (u is a vector)?
+        -> coupled to an inhibitory interneuron??? Balanced E-I?
+
+Chpt 9.1.4 - 2 neuron systems representing fast-slow subsystems.
+    - The 2 neurons alternate bursting:
+        --> explained as instrinsic/synaptic release/escape.
+    - conceivable that an E-I pair would produce the exact same phenomenon!
+
+
 Parameters:
     RS = {'name': 'RS', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
      'a': 0.03, 'b': -2, 'c': -50, 'd': 100, 'e': 0.2, 'f': 250., 'tau': 0.0}
