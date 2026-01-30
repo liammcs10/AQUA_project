@@ -31,12 +31,21 @@ def plot_potential_versus_injected(X, T, I_inj):
     fig, ax = plt.subplots(2, 1, figsize = (10, 10))
     fig.tight_layout()
 
-    ax[0].plot(T, I_inj, c = 'r')
-    ax[0].title.set_text('injected current')
+def plot_potential_versus_injected(X, T, I_inj, split = [], fig = None, ax = None, label = None):
+
+    if len(split) == 0:
+        split = range(len(T))
+
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(2, 1, figsize = (8, 8))
+    #fig.tight_layout()
+
+    ax[0].plot(T[split], I_inj[split], c = 'r', label = label)
+    #ax[0].title.set_text('injected current')
     ax[0].set_ylabel('Injected current [pA]')
 
-    ax[1].plot(T, X[0, :], c = 'blue')
-    ax[1].title.set_text('membrane response')
+    ax[1].plot(T[split], X[0, split], label = label)
+    #ax[1].title.set_text('membrane response')
     ax[1].set_ylabel('membrane \n potential [mV]')
 
     return fig, ax
