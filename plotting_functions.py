@@ -28,19 +28,20 @@ def plot_membrane_variables(X, T, split = []):
     return fig, ax
 
 
-def plot_potential_versus_injected(X, T, I_inj, split = []):
+def plot_potential_versus_injected(X, T, I_inj, split = [], fig = None, ax = None, label = None):
 
     if len(split) == 0:
         split = range(len(T))
 
-    fig, ax = plt.subplots(2, 1, figsize = (8, 8))
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(2, 1, figsize = (8, 8))
     #fig.tight_layout()
 
-    ax[0].plot(T[split], I_inj[split], c = 'r')
+    ax[0].plot(T[split], I_inj[split], c = 'r', label = label)
     #ax[0].title.set_text('injected current')
     ax[0].set_ylabel('Injected current [pA]')
 
-    ax[1].plot(T[split], X[0, split], c = 'blue')
+    ax[1].plot(T[split], X[0, split], label = label)
     #ax[1].title.set_text('membrane response')
     ax[1].set_ylabel('membrane \n potential [mV]')
     ax[1].set_xlabel('Time [ms]')
