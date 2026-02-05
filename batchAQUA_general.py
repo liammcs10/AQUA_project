@@ -340,6 +340,65 @@ class batchAQUA:
 
         return self.tau + np.divide(np.log(2), self.e, out = a, where = (self.f != 0) & (self.e != 0))
         
+    def get_threshold(self, idx, I_min = 1, I_max = 500):
+        """ 
+            Get the threshold current to generate spiking. Returned value is just below threshold. 
+            
+            param idx:      integer
+                            the index of the neuron for which to find the threshold.
+        
+        """
+
+        T = 4000    # ms
+        dt = 0.1    # ms
+        N_iter = int(T/dt)
+
+        # current values to check
+        I_list = np.linspace(I_min, I_max, 100)
+
+        N_neurons = len(I_list)
+
+        # create parameter array
+        params = [self.get_params(idx) for i in range(N_neurons)]
+
+        params = pd.DataFrame(params)
+        print(params[:5])
+
+        # injected current
+        I_inj = np.array([i*np.ones(N_iter) for i in I_list])
+
+        x_start = np.full((N_neurons, 3), fill_value = np.array([self.v_r[idx], 0, 0]))
+        t_start = np.zeros(N_neurons)
+
+        neurons = batchAQUA(params)
+        neurons.Initialise(x_start, t_start)
+
+        # first pass
+        _, _, spikes = neurons.update_batch(dt, N_iter, I_inj)
+
+        if len(spikes[0]) == 0:
+            raise ValueError("Please try a larger range of I values")
+        
+        idx_threshold = np.argwhere(np.isnan(spikes[:, 0]).flatten())[-1]
+        
+        sub_threshold = I_list[idx_threshold]
+        above_threshold = I_list[idx_threshold + 1]
+
+        #refine I_inj to narrow down the threshold
+        I_list_thresh = np.linspace(sub_threshold, above_threshold, N_neurons)
+        I_inj_thresh = np.array([i*np.ones(N_iter) for i in I_list_thresh])
+
+        neurons.Initialise(x_start, t_start)
+        X, _, _ = neurons.update_batch(dt, N_iter, I_inj_thresh)
+
+
+        idx_threshold = np.argwhere(np.all(np.diff(X[:, 0, -20:], axis = 1) == 0., axis = 1))[-1]
+
+        threshold = I_list_thresh[idx_threshold][0]     # closer estimate of the threshold
+        steady_state = X[idx_threshold, :, -1][0]       # equilibrium point
+
+        return threshold, steady_state      
+
 
 
 
