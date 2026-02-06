@@ -8,6 +8,29 @@ from mpl_toolkits.mplot3d.axes3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 
+def plot_ISI_dist(spikes, bins = 50, fig = None, ax = None):
+    """
+    Plots the ISI distribution from the spike time data.
+
+    params:
+        spikes:     (N_spikes, ) array of spike times
+
+    """
+
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(1, 1, figsize = (8, 8))
+
+    ISI = np.ediff1d(spikes)
+
+    ax.hist(ISI, bins)
+
+    ax.set_xlabel("Interspike Interval (ISI) [ms]")
+    ax.set_ylabel("Counts")
+
+    return fig, ax
+
+
+
 
 
 def plot_membrane_variables(X, T, split = []):
@@ -32,6 +55,16 @@ def plot_potential_versus_injected(X, T, I_inj):
     fig.tight_layout()
 
 def plot_potential_versus_injected(X, T, I_inj, split = [], fig = None, ax = None, label = None):
+    """
+    Draws the membrane potential and the injected current against time
+    params:
+        X:          (3, N_iter) array from simulation
+        T:          (N_iter, ) time array
+        I_inj:      (N_iter, ) injected current
+        split:      continuous array of indices to plot
+        fig, ax:    pyplot fig and ax objects
+        label:      line label
+    """
 
     if len(split) == 0:
         split = range(len(T))
