@@ -8,6 +8,7 @@ e.g.
 
 """
 import numpy as np
+from scipy.signal import butter, filtfilt, sosfiltfilt
 
 """
 def __init__(self, N_iter, dt, y_0):
@@ -105,7 +106,6 @@ def spikes_constant(N_iter, dt, y_0, ISI, N_spikes, spike_height, spike_duration
     for i in range(N_spikes):
         I[delay_steps + i*ISI_steps: delay_steps + i*ISI_steps + spike_duration_steps] += spike_height
     
-
     return I
 
 
@@ -123,4 +123,44 @@ def sinusoid(N_iter, dt, freq, amp, phase):
     phase *= 2*np.pi              # phase in degrees
     return amp*np.sin(freq*x + phase), x
 
+def filtered_white_noise(T, dt, amplitude = None, cutoff = 30, poles = 5):
+    """ Generate low-pass filtered white noise time signal
 
+    Output contains frequency bands *mostly* below the cut off
+    there is some leakage to higher frequencies due to the butterworth
+    filter being used. Increasing the 'poles' parameter decreases this 
+    effect (poles parameter should not exceed ~8).
+    
+    param:
+        T:              signal duration (in sec)
+        dt:             signal timestep (in ms)
+        amplitude:      amplitude of the output signal
+        cutoff:         cutoff frequency in Hz
+        poles:          order of the butterworth filter.    
+    
+    """
+
+    # T is the sample period
+    fs = 1000 / dt              # sampling frequency, Hz
+    N_settle = int((poles/cutoff) * fs)
+    N = int(T * fs) + 2*N_settle      # number of samples drawn
+    nyq = 0.5 * fs              # nyquist frequency
+    order = 2                   # approximate sine with a quadratic
+
+    WN = (np.random.uniform(size = N))    # white noise
+
+    sos = butter(poles, cutoff, btype = 'lowpass', fs = fs, output = 'sos')
+    y = sosfiltfilt(sos, WN)[N_settle:-N_settle]
+    y_mean = np.mean(y)
+
+    #shift y to have mean 0
+    y -= y_mean
+    y_max = np.max(np.abs(y))
+    if amplitude is None:
+        scale = 1
+    else:
+        scale = amplitude / y_max
+    
+    y *= scale
+
+    return y
