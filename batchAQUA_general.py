@@ -361,9 +361,6 @@ class batchAQUA:
         # create parameter array
         params = [self.get_params(idx) for i in range(N_neurons)]
 
-        params = pd.DataFrame(params)
-        print(params[:5])
-
         # injected current
         I_inj = np.array([i*np.ones(N_iter) for i in I_list])
 
