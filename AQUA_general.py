@@ -29,7 +29,11 @@ MSN = {'name': 'MSN', 'C': 50, 'k': 1, 'v_r': -80, 'v_t': -25, 'v_peak': 40,
 """
 
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
+
+from batchAQUA_general import batchAQUA
+
 
 
 class AQUA:
@@ -207,3 +211,14 @@ class AQUA:
         elif self.e == 0.:
             raise Exception("Infinite decay time, division by zero...")
         return self.tau + (np.log(2)/self.e)
+    
+    def get_threshold(self, I_min = 1, I_max = 500):
+        """ get the threshold for the neuron, makes use of the batch version of this function """
+
+        params = [self.get_params()]
+
+
+        batch = batchAQUA(params)
+
+        return batch.get_threshold(idx = 0, I_min = I_min, I_max = I_max)
+
