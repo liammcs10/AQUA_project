@@ -105,10 +105,18 @@ def spikes_constant(N_iter, dt, y_0, ISI, N_spikes, spike_height, spike_duration
     return I
 
 
-
 def sinusoid(N_iter, dt, freq, amp, phase):
+    """
+        N_iter:     number of timesteps
+        dt:         timestep
+        freq:       frequency in Hz
+        amp:        in pA
+        phase:      degrees
+    """
     x = np.linspace(0, N_iter * dt, N_iter)
 
+    freq  *= 2*np.pi/1000          # frequency in radians per s
+    phase *= 2*np.pi              # phase in degrees
     return amp*np.sin(freq*x + phase), x
 
 
