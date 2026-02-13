@@ -30,9 +30,6 @@ def plot_ISI_dist(spikes, bins = 50, fig = None, ax = None):
     return fig, ax
 
 
-
-
-
 def plot_membrane_variables(X, T, split = []):
     # X has shape: 3 x N_iter
     # T has shape: N_iter
@@ -306,3 +303,42 @@ def plot_VUtime(X, T, split, I, neuron, N_dim):
     surf1 = ax1.plot_surface(V_grid, T_grid, v_null, cmap = 'coolwarm', antialiased = False, linewidth = 0, alpha = 0.5)
     surf2 = ax1.plot_surface(V_grid, T_grid, u_null, cmap = 'PuBuGn', antialiased = False, linewidth = 0, alpha = 0.5) 
     return fig
+
+
+def plot_bifurcation_I(spikes, I_range, steady_state = True, fig = None, ax = None):
+    """
+    Plots the steady-state or instantaneous ISIs versus injected current. 
+    
+    INPUT:
+        spikes:         ndarray of spike times
+                        each row is a different simulation
+        I_range:        array
+                        injected currents
+        steady_state:   boolean
+                        True if steady state ISIs, otherwise instantaneous
+    
+    OUTPUT:
+        fig, ax:        matplotlib obj
+    
+    """
+
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+    
+    for i in range(np.shape(spikes)[0]):
+        spike_times = spikes[i, ~np.isnan(spikes[i])] # get row and remove nan values
+        if steady_state:
+            subSpikes = spike_times[-int(0.5*len(spike_times)):] # last half of spikes
+        else: # if instantaneous is desired
+            subSpikes = spike_times[:int(0.5*len(spike_times))]  # first half of spikes
+        
+        ISI = np.diff(subSpikes)
+        isi_vals, isi_counts = np.unique(np.round(ISI, decimals = 4), return_counts = True)
+        ax.scatter(I_range[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, c = 'black', s = 0.8, marker = "o", label = label)
+
+    return fig, ax
+
+"""
+def animate_train(X, T, I, out_dir):
+    # Create an animation for the injected current and output membrane variables
+"""
