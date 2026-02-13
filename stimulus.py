@@ -62,7 +62,7 @@ def spikes_from_dist(inverse_cdf, N_iter, dt, seed = None):
         inverse_cdf:    function, defines the inverse cumulative density function of the desired distribution
         N_iter:         length of the return array containing spikes
         dt:             timestep in ms
-        seed;           seed for the random number generator
+        seed:           seed for the random number generator
     
     returns
         I:              array (N_iter, )

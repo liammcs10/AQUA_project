@@ -30,9 +30,6 @@ def plot_ISI_dist(spikes, bins = 50, fig = None, ax = None):
     return fig, ax
 
 
-
-
-
 def plot_membrane_variables(X, T, split = []):
     # X has shape: 3 x N_iter
     # T has shape: N_iter
@@ -308,7 +305,7 @@ def plot_VUtime(X, T, split, I, neuron, N_dim):
     return fig
 
 
-def plot_bifurcation_I(spikes, I_range, steady_state = True):
+def plot_bifurcation_I(spikes, I_range, steady_state = True, fig = None, ax = None):
     """
     Plots the steady-state or instantaneous ISIs versus injected current. 
     
@@ -324,7 +321,10 @@ def plot_bifurcation_I(spikes, I_range, steady_state = True):
         fig, ax:        matplotlib obj
     
     """
-    fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(1, 1, figsize = (10, 10))
+    
     for i in range(np.shape(spikes)[0]):
         spike_times = spikes[i, ~np.isnan(spikes[i])] # get row and remove nan values
         if steady_state:
@@ -334,7 +334,7 @@ def plot_bifurcation_I(spikes, I_range, steady_state = True):
         
         ISI = np.diff(subSpikes)
         isi_vals, isi_counts = np.unique(np.round(ISI, decimals = 4), return_counts = True)
-        ax.scatter(I_range[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, c = 'black', s = 0.8, marker = "o")
+        ax.scatter(I_range[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, c = 'black', s = 0.8, marker = "o", label = label)
 
     return fig, ax
 
