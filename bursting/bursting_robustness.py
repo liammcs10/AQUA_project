@@ -53,20 +53,20 @@ neuron_params = [RS_int, RS_middle, RS_res]
 
 def main():
     
-    T = 5000    # ms
+    T = 500    # ms
     dt = 0.1    # ms
     N_iter = int(T/dt)
 
 
     """ prep simulation parameter values"""
     # autapse values
-    e_vals = 1/np.linspace(2, 10, 10)   # 10 values btw 2-10 ms
-    f_vals = np.linspace(50, 450, 40)
+    e_vals = 1/np.linspace(2, 10, 5)   # 10 values btw 2-10 ms
+    f_vals = np.linspace(50, 450, 20)
     tau_vals = np.linspace(0, 4, 5)
     print(tau_vals)
     N_neurons = len(e_vals)*len(f_vals)*len(tau_vals) + 1
 
-    N_I = 200     # the number of current steps tested
+    N_I = 100     # the number of current steps tested
 
     N_sims = N_neurons * N_I
     print(N_sims)
@@ -91,7 +91,7 @@ def main():
         params_df = pd.DataFrame(params)
 
         print(params_df.head())
-
+        print(params_df.count())
 
 
 
