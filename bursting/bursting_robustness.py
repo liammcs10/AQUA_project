@@ -9,7 +9,7 @@ Perform some kind of gri-search on parameter values around RS neurons.
             f between 50 to 250 pA
             tau between 0-4 ms
     - can calculate the input-output gain (slope of F-I curve)
-            also the instantaneous I/O gain.
+            - also the instantaneous I/O gain.
 
 
 
@@ -46,14 +46,11 @@ RS_res = {'name': 'RS_resonator', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v
 
 
 
-
-
-
 neuron_params = [RS_int, RS_middle, RS_res]
 
 def main():
     
-    T = 500    # ms
+    T = 1000    # ms
     dt = 0.1    # ms
     N_iter = int(T/dt)
 
@@ -68,7 +65,7 @@ def main():
 
     N_I = 100     # the number of current steps tested
 
-    N_sims = N_neurons * N_I
+    N_sims = N_neurons * N_I    # number of simulations per neuron parameter
     print(N_sims)
 
     I_range = np.linspace(50, 500, N_I)
@@ -77,21 +74,44 @@ def main():
     I_inj = np.array([step_current(N_iter, dt, 0., delay, i) for i in I_range for n in range(N_neurons)])
     print(np.shape(I_inj))
 
-    # loop over neuron parameters
+    # break up the simulation to accommodate memory issues
+    neurons_per_sim = 10000
+    N_loops = N_sims // neurons_per_sim     # number of loops to do
+
+    # loop over each neuron
     for param in neuron_params:
 
-        # create parameter dataframe and initial conditions
-        x_start = np.full((N_sims, 3), np.array([-60, 0., 0.]))
-        t_ini = np.zeros(N_sims)
-        
-        params = []
-        for i in range(N_sims):
-            params.append(param)
+        for n in range(N_loops):    # loop over number of loops
+            # create parameter dataframe and initial conditions
+            if n == N_loops - 1:
+                neurons_in_sim = N_sims - (N_loops - 1)*neurons_per_sim
+                print(neurons_in_sim)
+            else:
+                neurons_in_sim = neurons_per_sim
+            
+            x_start = np.full((neurons_in_sim, 3), np.array([-60, 0., 0.]))
+            t_ini = np.zeros(neurons_in_sim)
+            
+            params = []
+            for i in range(neurons_in_sim):
+                params.append(param)
 
-        params_df = pd.DataFrame(params)
+            params_df = pd.DataFrame(params)
 
-        print(params_df.head())
-        print(params_df.count())
+            batch = batchAQUA(params_df)
+            batch.Initialise(x_start, t_ini)
+
+            loop_start_idx = n * neurons_per_sim
+            loop_end_idx = loop_start_idx + neurons_in_sim
+            _, _, spike = batch.update_batch(dt, N_iter, I_inj[loop_start_idx:loop_end_idx])
+
+            """
+            From this point on, 
+                -> multiplicative/divisive gain modulation: slope of the F-I curve.
+                -> additive/subtractive? 
+            
+            """
+
 
 
 
