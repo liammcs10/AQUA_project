@@ -98,6 +98,7 @@ def sim(args, conf):
     # convert params_arr to DataFrame
     params_df = pd.DataFrame(params_df)
 
+    # We won't define the batch just yet as it may be more useful to have 
 
     """ RUN THE ANALYSES BELOW - define functions at the end of this script/ in a different script"""
     
