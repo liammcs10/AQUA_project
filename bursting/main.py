@@ -14,7 +14,7 @@ simulations relatively fast.
 """
 
 import sys
-sys.path.append("..\\") # parent directory
+sys.path.append("..//") # parent directory
 
 from AQUA_general import AQUA
 from batchAQUA_general import batchAQUA

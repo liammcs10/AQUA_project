@@ -20,6 +20,8 @@ simulations relatively fast.
 # append AQUA directory to sys.path
 import sys
 sys.path.append("..\\") # parent directory
+
+
 from AQUA_general import AQUA
 from batchAQUA_general import batchAQUA
 from plotting_functions import *
@@ -38,12 +40,7 @@ import CLI
 import CF
 from functions import *
 
-"""
-For a given set of neuron parameters:
-    We need to identify the threshold current.
-    Apply a set of stimuli just below this threshold.
 
-"""
 
 
 def sim(args, conf):
@@ -85,6 +82,7 @@ def sim(args, conf):
 
     # calculate the number of neurons
     N_neurons = 1 + len(f_vals) * len(e_vals) * len(tau_vals)
+    print(f"N_neurons: {N_neurons}")
     # params arr will store all the parameter dictionaries in 1 place.
     params_arr = []
     params_arr.append(params) # index 0, will be the reference non-autaptic neuron
@@ -107,8 +105,6 @@ def sim(args, conf):
     # Test 1
     out_df = gain_modulation(params_df, conf)
 
-    print(out_df.head())
-
     # Test 2
     
 
@@ -118,7 +114,9 @@ def sim(args, conf):
     # At this stage just save the outputs
 
     # save the results dict as a pickle
-    
+    with open(args.outfile, 'wb') as file:
+        pickle.dump(out_df, file)
+
 
 
 
@@ -137,6 +135,8 @@ def gain_modulation(params_df, conf):
         instant:        whether to take instantaneous response.
 
     """
+    print("- - - GAIN MODULATION - - -")
+
     # convert config values to float
     conf["Gain"] = cast_to_float(conf["Gain"])
     conf["Gain"]["N_I"] = int(conf["Gain"]["N_I"])
@@ -159,7 +159,7 @@ def gain_modulation(params_df, conf):
 
     # number of simulations that ultimately need to be run
     N_sims = N_neurons * conf["Gain"]["N_I"]
-
+    print(N_sims)
     # Need to scale up parameter dict
     sim_params = pd.DataFrame(data = [], columns = params_df.keys())
     for i in range(conf["Gain"]["N_I"]):

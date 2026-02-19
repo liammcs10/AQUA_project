@@ -44,8 +44,6 @@ RS_res = {'name': 'RS_resonator', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v
      'a': 0.03, 'b': 5, 'c': -50, 'd': 100, 'e': 0., 'f': 0., 'tau': 0.}
 
 
-
-
 neuron_params = [RS_int, RS_middle, RS_res]
 
 def main():
