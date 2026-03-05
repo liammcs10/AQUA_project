@@ -65,19 +65,19 @@ def sim(args, conf):
     params = cast_to_float(conf["Neuron"])
 
     # extract autapse params
-
-    if conf["Autapse"]["define_explicit"]:     # if True, the specific autapse parameter values were given
+    print(bool(conf["Autapse"]["define_explicit"]) == 'False')
+    if conf["Autapse"]["define_explicit"] == 'True':     # if True, the specific autapse parameter values were given
         f_vals   = np.array(conf["Autapse"]["f"].split(", "), dtype = np.float64)
         e_vals   = np.array(conf["Autapse"]["e"].split(", "), dtype = np.float64)
         tau_vals = np.array(conf["Autapse"]["tau"].split(", "), dtype = np.float64)
     else:
         # 0 - start value, 1 - end value, 2 - number of samples
         f_arr = np.array(conf["Autapse"]["f"].split(", "), dtype = np.float64)
-        f_vals = np.linspace(f_arr[0], f_arr[1], f_arr[2])
+        f_vals = np.linspace(f_arr[0], f_arr[1], int(f_arr[2]))
         e_arr = np.array(conf["Autapse"]["e"].split(", "), dtype = np.float64)
-        e_vals = np.linspace(e_arr[0], e_arr[1], e_arr[2])
+        e_vals = np.linspace(e_arr[0], e_arr[1], int(e_arr[2]))
         tau_arr = np.array(conf["Autapse"]["tau"].split(", "), dtype = np.float64)
-        tau_vals = np.linspace(tau_arr[0], tau_arr[1], tau_arr[2])
+        tau_vals = np.linspace(tau_arr[0], tau_arr[1], int(tau_arr[2]))
 
 
     # calculate the number of neurons
@@ -97,10 +97,10 @@ def sim(args, conf):
         
     # convert params_arr to DataFrame
     params_df = pd.DataFrame(params_arr)
-
+    print(f"params_df is {sys.getsizeof(params_df)/1000} kBytes")
     # We won't define the batch just yet as it may be more useful to have 
 
-    """ RUN THE ANALYSES BELOW - define functions at the end of this script/ in a different script"""
+    """ RUN THE ANALYSES BELOW - define functions at the end of this script/in a different script"""
     
     # Test 1
     out_df = gain_modulation(params_df, conf)
@@ -159,7 +159,7 @@ def gain_modulation(params_df, conf):
 
     # number of simulations that ultimately need to be run
     N_sims = N_neurons * conf["Gain"]["N_I"]
-    print(N_sims)
+    print(f"N_sims: {N_sims}")
     # Need to scale up parameter dict
     sim_params = pd.DataFrame(data = [], columns = params_df.keys())
     for i in range(conf["Gain"]["N_I"]):
@@ -232,7 +232,6 @@ def get_F(spikes, instant = False):
     :param instant: boolean, whether to get instantaneous firing frequency or not
 
     """
-    print("GET F")
     N_neurons = len(spikes)
     F = np.zeros(N_neurons)
 
