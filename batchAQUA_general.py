@@ -190,9 +190,6 @@ class batchAQUA:
         for i, delay in enumerate(delay_steps):
             if delay != 0:
                 X[i, 2, :] = np.roll(X[i, 2, :], delay)
-                print("- - - BEFORE ERROR - - -")
-                print(delay)
-                print(w_prev[i])
                 X[i, 2, :delay] = w_prev[i, -delay:]
 
         return X, T, spike_times
@@ -412,6 +409,19 @@ class batchAQUA:
 
 
 """ - - - HELPER FUNCTIONS - - - """
+
+def convert_spikes_to_aqua(spike_train):
+    """
+    Converts a SpikeMonitor.spike_trains() output to the same output from the AQUA class
+    """
+    spikes = []
+    for key in spike_train.keys():
+        spikes.append(list(spike_train[key]/ms))
+    
+    spikes = pad_list(spikes)
+
+    return spikes
+
 
 def pad_list(lst, pad_value=np.nan, pad_end = True):
     max_length = max(len(sublist) for sublist in lst)
