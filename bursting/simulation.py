@@ -102,10 +102,10 @@ def sim(args, conf):
 
     """ RUN THE ANALYSES BELOW - define functions at the end of this script/in a different script"""
     
-    # Test 1
+    # Test 1 - gain modulation on the AQUA batch
     out_df = gain_modulation(params_df, conf)
 
-    # Test 2
+    # Test 2 - gain modulation on biexponential autapse in brian2
     
 
     # Test 3
@@ -218,6 +218,21 @@ def gain_modulation(params_df, conf):
     return output_df
 
 
+
+def gain_modulation_biexponential(params_df, conf):
+    """ 
+    Same as the function above except that here we will make use of the 
+    brian2 model with a biexponential autapse function. 
+
+    params_df needs to be updated to include
+
+    params:
+        params_df:      DataFrame containing all autapse parameters
+        conf:           parsed config file containing simulation info.
+        instant:        whether to take instantaneous response.
+
+
+    """
 
 
 
