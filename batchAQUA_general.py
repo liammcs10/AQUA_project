@@ -187,13 +187,22 @@ class batchAQUA:
         return X, T, spike_times
 
 
-    def meetBrian(self, biexponential = False, t_a1 = 1., t_a2 = 5.):
+    """
+        This function should only return the model equations corresponding to the AQUA model.
+        It can have either a simple or biexponential autapse.
+        
+        Creation of the NeuronGroup and variables should be done outside this function...
+    """
+    def meetBrian(self, stimulus_name, biexponential = False, t_a1 = 1., t_a2 = 5.):
         """
             Returns the brian2 version of the AQUA model.
             parameters are pre-initialised aside for I_inj
 
-            * NEED TO DEFINE A POPULATION OF FS NEURONS SEPARATELY *
-            * FROM OTHER TYPES                                     *
+            IN:
+                self:               existing batch Object
+                stimulus_name:      name of the TimedArray Object which will store the input current to this batch of neurons.
+                biexponential:      whether to use the biexponential autapse model
+                t_a1, t_a2;         if biexponential, time constants for the model.
 
             OUT:
                 G:          brian2 NeuronGroup
@@ -201,17 +210,16 @@ class batchAQUA:
 
         """
 
-
         # separate neuron equation for FS
         if np.all(self.isFS == 1):
             # U = (v < -55) / 0.025*(v + 55)**3 : 0. : 1
             print("ALL FS!!!")
             ODEs = '''
-        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + I))/ms : 1
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t) + g_total))/ms : 1
         du/dt = a*(int(v>=-55)*(0.025*(v+55)**3) - u)/ms : 1'''
         elif np.all(self.isFS == 0):
             ODEs = '''
-        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + I))/ms : 1
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t) + g_total))/ms : 1
         du/dt = (a * (b*(v-v_r) - u))/ms : 1'''
         else:
             print("Cannot mix FS and non-FS populations!!!")
@@ -230,12 +238,12 @@ class batchAQUA:
         e_a : 1
         '''
         variables = '''
+        g_total : 1
         C : 1
         k : 1
         v_r : 1
         v_t : 1
         v_peak : 1
-        I : 1
         a : 1
         b : 1
         c : 1
@@ -245,16 +253,12 @@ class batchAQUA:
 
         EQS = ODEs + dw + variables
 
-        print(" - - - - Equations - - - - ")
-        eqs = Equations(EQS)
-        print(str(eqs))
-
         RESET = '''
         v = c
         u += d
         '''
 
-        G = NeuronGroup(self.N_models, EQS, threshold = 'v >= v_peak', reset = RESET, method = 'rk2')
+        G = NeuronGroup(self.N_models, EQS, threshold = 'v >= v_peak', reset = RESET, method = 'rk2', namespace = {'stimulus': stimulus_name})
 
 
         if biexponential:
