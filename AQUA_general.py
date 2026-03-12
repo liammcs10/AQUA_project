@@ -163,6 +163,9 @@ class AQUA:
                 spike_times.append(self.t)
 
             X[:, n] = self.x
+
+        X[2, :] = np.roll(X[2, :], delay_steps)
+        X[2, :delay_steps] = w_prev
         
         return X, T, np.array(spike_times)
 

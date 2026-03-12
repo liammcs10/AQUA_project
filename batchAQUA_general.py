@@ -120,6 +120,8 @@ class batchAQUA:
 
         delay_steps = (self.tau / dt).astype(int)
 
+        print(f"DELAY STEPS: {delay_steps}")
+
 
         if len(w_prev) == 0:
             w_prev = np.zeros(shape = (self.N_models, np.max(delay_steps))) # assume no prior spikes
@@ -138,11 +140,11 @@ class batchAQUA:
 
                 w_tau1 = np.zeros(self.N_models)                
                 tau_idx = np.nonzero(~(n <= delay_steps))                             # indices that need updating
-                prev_idx = np.nonzero(n <= delay_steps)                               # where delay_steps extends prior to the sim
+                prev_idx = np.nonzero(n <= delay_steps)                               # where delay_steps extends prior to the sim start
                 w_tau1[tau_idx] = X[tau_idx, 2, n - delay_steps[tau_idx]-1]           # get w at the delay
                 w_tau1[prev_idx] = w_prev[prev_idx, n - delay_steps[prev_idx] - 1]
                 
-                k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])            # first RK param
+                k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])                 # first RK param
                 
                 w_tau2 = np.zeros(self.N_models)  
                 bool_idx0 = np.nonzero(n <= delay_steps - 1)         # delay_steps extends before the sim start
@@ -178,12 +180,21 @@ class batchAQUA:
             self.x[idx, 2] += self.f[idx]
             
             for i in idx[0]: # loop through the indices that have been updated
-                spike_times[i].append(self.t[i]) # append the time of spike.
+                spike_times[i].append(self.t[i] - dt) # append the time of spike.
             
             X[:, :, n] = self.x
 
         spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
     
+        # shift the autapse current array values to line up with the actual times
+        for i, delay in enumerate(delay_steps):
+            if delay != 0:
+                X[i, 2, :] = np.roll(X[i, 2, :], delay)
+                print("- - - BEFORE ERROR - - -")
+                print(delay)
+                print(w_prev[i])
+                X[i, 2, :delay] = w_prev[i, -delay:]
+
         return X, T, spike_times
 
 
@@ -215,11 +226,11 @@ class batchAQUA:
             # U = (v < -55) / 0.025*(v + 55)**3 : 0. : 1
             print("ALL FS!!!")
             ODEs = '''
-        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t) + g_total))/ms : 1
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + g_total))/ms : 1
         du/dt = a*(int(v>=-55)*(0.025*(v+55)**3) - u)/ms : 1'''
         elif np.all(self.isFS == 0):
             ODEs = '''
-        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t) + g_total))/ms : 1
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + g_total))/ms : 1
         du/dt = (a * (b*(v-v_r) - u))/ms : 1'''
         else:
             print("Cannot mix FS and non-FS populations!!!")
@@ -266,7 +277,7 @@ class batchAQUA:
         else:
             syn_reset = 'w += f'
         
-
+        # create autapses
         autapses = Synapses(G, G, on_pre = syn_reset)
         autapses.connect(condition = 'i == j')
         autapses.delay = self.tau*ms
