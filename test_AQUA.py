@@ -97,10 +97,10 @@ class TestAQUA(unittest.TestCase):
 
         # reinitialise neuron_05 halfway through. Needs an autapse here.
         neuron_05.Initialise(x_half[2], t_half[2])
-        cls.X_half, _, _ = neuron_05.update_RK2(dt, N_iter, I_inj[0, :], w_prev = w_prev[2, :])
+        delay = int(RS_05["tau"]/dt)
+        cls.X_half, _, _ = neuron_05.update_RK2(dt, N_iter, I_inj[0, :], w_prev = w_prev[2, -delay:])
 
         ## BATCH RUNS
-
         batchParams = [RS_NONE, RS_0, RS_05, RS_08, FS]
         batch = batchAQUA(batchParams)
         batch.Initialise(x_half, t_half)
