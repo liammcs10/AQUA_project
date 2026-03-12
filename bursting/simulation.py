@@ -23,7 +23,7 @@ sys.path.append("..\\") # parent directory
 
 
 from AQUA_general import AQUA
-from batchAQUA_general import batchAQUA
+from batchAQUA_general import *
 from plotting_functions import *
 from stimulus import step_current
 
@@ -107,7 +107,7 @@ def sim(args, conf):
     #out_df = gain_modulation(params_df, conf)
 
     # Test 2 - gain modulation on biexponential autapse in brian2
-    gain_modulation_biexponential(params_df, conf)
+    out_df = gain_modulation_biexponential(params_df, conf)
 
     # Test 3
 
@@ -311,11 +311,7 @@ def gain_modulation_biexponential(params_df, conf):
         # run simulation
         net.run(T*ms)
 
-        spikes = spikemon.spike_trains()
-
-        if n == 2:
-            print(spikes.keys())
-            print(spikes)
+        spikes = convert_spikes_to_aqua(spikemon.spike_trains())
 
         """ - - - from this point analyse from spike times and start building output df - - - """
         # quantifying autapse values -> don't correspond to biexponential autapse but still differentiate all neurons...
@@ -340,7 +336,7 @@ def gain_modulation_biexponential(params_df, conf):
         small_df = pd.DataFrame(out_dict)   # convert dictionary to DataFrame
         output_df = pd.concat([output_df, small_df])
 
-
+    return output_df
 
 """ - - - - HELPER FUNCTIONS - - - - """
 
