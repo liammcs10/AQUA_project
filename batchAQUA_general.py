@@ -201,12 +201,10 @@ class batchAQUA:
 
         """
 
-        print(f"DECAYS: {t_a1} and {t_a2}")
-        print((t_a1/t_a2) ** (t_a1/(t_a2 - t_a1)))
 
         # separate neuron equation for FS
         if np.all(self.isFS == 1):
-            # U = (v < -55) ? 0.025*(v + 55)**3 : 0. : 1
+            # U = (v < -55) / 0.025*(v + 55)**3 : 0. : 1
             print("ALL FS!!!")
             ODEs = '''
         dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + I))/ms : 1
@@ -255,7 +253,6 @@ class batchAQUA:
         v = c
         u += d
         '''
-
 
         G = NeuronGroup(self.N_models, EQS, threshold = 'v >= v_peak', reset = RESET, method = 'rk2')
 
