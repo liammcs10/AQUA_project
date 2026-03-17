@@ -268,9 +268,10 @@ def gain_modulation_biexponential(params_df, conf):
     # biexponential autapse - fix rise time
     t_a1_arr = np.ones(N_sims)
     t_a2_arr = 1/np.array(sim_params['e'])
+    t_a2_arr[t_a2_arr == np.inf] = 2.       # remove infinities where there is no autapse
+
     print("- - - biexponential - - -")
-    print(np.shape(t_a1_arr))
-    print(np.shape(t_a2_arr))
+    print(t_a2_arr)
     
     # somewhere to store the outputs
     cols = ['e', 'f', 'tau', 'autapse current', 'autapse delay', 'I_h', 'F_instant', 'F_steady']
@@ -288,16 +289,20 @@ def gain_modulation_biexponential(params_df, conf):
         idx_start = n * N_per_loop
         idx_end = idx_start + N_in_loop
 
-        # create batch
+        # initialise
+        x_start = np.full((N_in_loop, 3), fill_value = np.array([conf["Neuron"]["c"], 0, 0]))
+        t_start = np.zeros(N_in_loop)
+
+        # create batch and initialise
         batch = batchAQUA(sim_params[idx_start:idx_end])
+        batch.Initialise(x_start, t_start)
+
+
         # convert injected currents to brian2
         I_injTA = TimedArray(values = I_inj[idx_start:idx_end, :].T, dt = dt*ms, name = 'I_injTA')    # inputs as a TimedArray
 
         # convert batch to brian2
         G, autapses = batch.meetBrian(stimulus_name = I_injTA, biexponential = True, t_a1 = t_a1_arr[idx_start:idx_end], t_a2 = t_a2_arr[idx_start:idx_end])
-
-        print("- - - G - - -")
-        print(G.t_a2)
 
         # simulation timestep
         defaultclock.dt = dt*ms
@@ -305,11 +310,6 @@ def gain_modulation_biexponential(params_df, conf):
         M_w = StateMonitor(G, 'w', record = 0)
         spikemon = SpikeMonitor(G, record = True)
         net = Network(G, autapses, M_v, M_w, spikemon)
-
-        print("- - - BRIAN2 - - -")
-        print(M_v.v[0])
-        plt.plot(M_v.t/ms, M_v.v)
-        plt.show()
 
         # run simulation
         net.run(T*ms)
