@@ -66,21 +66,47 @@ def sim(args, conf):
     params = cast_to_float(conf["Neuron"])
 
     # extract autapse params
-    print(bool(conf["Autapse"]["define_explicit"]) == 'False')
-    if conf["Autapse"]["define_explicit"] == 'True':     # if True, the specific autapse parameter values were given
+    if conf["Autapse"]["mode"] == 'explicit':     # mode = 'explicit' - autapse parameters are pre-defined and comma-separated
         f_vals   = np.array(conf["Autapse"]["f"].split(", "), dtype = np.float64)
         e_vals   = np.array(conf["Autapse"]["e"].split(", "), dtype = np.float64)
         tau_vals = np.array(conf["Autapse"]["tau"].split(", "), dtype = np.float64)
-    else:
+    elif conf["Autapse"]["mode"] == 'uniform':    # mode = 'uniform' - the range is supplied and the number of params
         # 0 - start value, 1 - end value, 2 - number of samples
+        print("- - - UNIFORM - - -")
         f_arr = np.array(conf["Autapse"]["f"].split(", "), dtype = np.float64)
         f_vals = np.linspace(f_arr[0], f_arr[1], int(f_arr[2]))
         e_arr = np.array(conf["Autapse"]["e"].split(", "), dtype = np.float64)
         e_vals = np.linspace(e_arr[0], e_arr[1], int(e_arr[2]))
         tau_arr = np.array(conf["Autapse"]["tau"].split(", "), dtype = np.float64)
         tau_vals = np.linspace(tau_arr[0], tau_arr[1], int(tau_arr[2]))
+    elif conf["Autapse"]["mode"] == 'normal':       # mode = 'normal' - params sampled from a normal distribution with mean, std, N_samples
+        # 0 - mean, 1 - std, 2 - N_samples
+        print("- - - NORMAL - - -")
+        f_arr = np.array(conf["Autapse"]["f"].split(", "), dtype = np.float64)
+        f_vals = np.random.normal(f_arr[0], f_arr[1], int(f_arr[2]))
+        e_arr = np.array(conf["Autapse"]["e"].split(", "), dtype = np.float64)
+        e_vals = np.random.normal(e_arr[0], e_arr[1], int(e_arr[2]))
+        tau_arr = np.array(conf["Autapse"]["tau"].split(", "), dtype = np.float64)
+        tau_vals = np.random.normal(tau_arr[0], tau_arr[1], int(tau_arr[2]))
+    elif conf["Autapse"]["mode"] == 'log-normal':       # mode = 'log-normal' - sample from log-normal distribution with mean, std, N_samples
+        # need to convert mean and std to those of the underlying normal distribution
+        # f
+        f_arr = np.array(conf["Autapse"]["f"].split(", "), dtype = np.float64)
+        f_mean = np.log(f_arr[0]**2/ (np.sqrt(f_arr[0]**2 + f_arr[1]**2)))
+        f_std = np.log(1 + (f_arr[1]**2/f_arr[0]**2))
+        f_vals = np.random.Generator.lognormal(f_mean, f_std, int(f_arr[2]))
+        # e
+        e_arr = np.array(conf["Autapse"]["e"].split(", "), dtype = np.float64)
+        e_mean = np.log(e_arr[0]**2/ (np.sqrt(e_arr[0]**2 + e_arr[1]**2)))
+        e_std = np.log(1 + (e_arr[1]**2/e_arr[0]**2))
+        e_vals = np.random.Generator.lognormal(e_mean, e_std, int(e_arr[2]))
+        # tau
+        tau_arr = np.array(conf["Autapse"]["tau"].split(", "), dtype = np.float64)
+        tau_mean = np.log(tau_arr[0]**2/ (np.sqrt(tau_arr[0]**2 + tau_arr[1]**2)))
+        tau_std = np.log(1 + (tau_arr[1]**2/tau_arr[0]**2))
+        tau_vals = np.random.Generator.lognormal(tau_mean, tau_std, int(tau_arr[2]))
 
-
+    
     # calculate the number of neurons
     N_neurons = 1 + len(f_vals) * len(e_vals) * len(tau_vals)
     print(f"N_neurons: {N_neurons}")
@@ -104,10 +130,10 @@ def sim(args, conf):
     """ RUN THE ANALYSES BELOW - define functions at the end of this script/in a different script"""
     
     # Test 1 - gain modulation on the AQUA batch
-    #out_df = gain_modulation(params_df, conf)
+    out_df = gain_modulation(params_df, conf)
 
     # Test 2 - gain modulation on biexponential autapse in brian2
-    out_df = gain_modulation_biexponential(params_df, conf)
+    #out_df = gain_modulation_biexponential(params_df, conf)
 
     # Test 3
 
@@ -122,8 +148,6 @@ def sim(args, conf):
 
 
 """ - - - - SIMULATION FUNCTIONS - - - - """
-
-
 
 def gain_modulation(params_df, conf):
     """
@@ -200,6 +224,7 @@ def gain_modulation(params_df, conf):
 
         F_instant = get_F(spikes, instant = True)
         F_steady = get_F(spikes, instant = False)
+
 
         out_dict = {"e":   list(sim_params['e'][idx_start:idx_end]),
                     "f":   list(sim_params['f'][idx_start:idx_end]),
