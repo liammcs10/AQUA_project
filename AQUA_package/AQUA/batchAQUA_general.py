@@ -4,6 +4,8 @@ A batch simulation version of the AQUA class.
 
 """
 
+from AQUA.utils import *
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -403,42 +405,4 @@ class batchAQUA:
         return threshold, steady_state      
 
 
-
-
-
-""" - - - HELPER FUNCTIONS - - - """
-
-def convert_spikes_to_aqua(spike_train):
-    """
-    Converts a SpikeMonitor.spike_trains() output to the same output from the AQUA class
-    """
-    spikes = []
-    for key in spike_train.keys():
-        spikes.append(list(spike_train[key]/ms))
-    
-    spikes = pad_list(spikes)
-
-    return spikes
-
-def binarise_spikes(spikes, dt, N_iter):
-    ''' Convert AQUA spike outputs to binary spike trains '''
-    N_neurons = np.shape(spikes)[0]
-
-    spike_idx = (spikes / dt).astype(int)     # converts spike times to timesteps
-
-    spike_train = np.zeros((N_neurons, N_iter))
-
-    for n in range(N_neurons):
-        spike_train[n][spike_idx[n]] = 1.
-
-    return spike_train
-
-
-
-def pad_list(lst, pad_value=np.nan, pad_end = True):
-    max_length = max(len(sublist) for sublist in lst)
-    if pad_end:     # pad the end of the list
-        return np.array([sublist + [pad_value] * (max_length - len(sublist)) for sublist in lst])
-    else:           # pad the front of the list
-        return np.array([[pad_value] * (max_length - len(sublist)) + sublist for sublist in lst])
     
