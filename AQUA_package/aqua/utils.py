@@ -5,11 +5,6 @@ Utils script with useful analysis functions when studying AQUA neuronss
 
 '''
 
-### local imports
-from .batchAQUA_general import *
-from .AQUA_general import AQUA
-
-
 ## global imports
 import numpy as np
 import pandas as pd

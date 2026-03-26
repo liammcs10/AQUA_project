@@ -4,7 +4,7 @@ A batch simulation version of the AQUA class.
 
 """
 
-from .utils import *
+from .utils import pad_list
 
 import numpy as np
 import pandas as pd
