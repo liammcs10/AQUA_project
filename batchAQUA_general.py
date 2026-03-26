@@ -120,8 +120,6 @@ class batchAQUA:
 
         delay_steps = (self.tau / dt).astype(int)
 
-        print(f"DELAY STEPS: {delay_steps}")
-
 
         if len(w_prev) == 0:
             w_prev = np.zeros(shape = (self.N_models, np.max(delay_steps))) # assume no prior spikes
