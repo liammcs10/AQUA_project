@@ -1,0 +1,444 @@
+"""
+A batch simulation version of the AQUA class. 
+
+
+"""
+
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+from brian2 import *
+
+
+class batchAQUA:
+
+    def __init__(self, params_df):
+        """
+        A copy of the AQUA_general class optimized for batch simulations. 
+        
+        IN
+            params_list:    pd.DataFrame or casteable 
+                            each dict represents 1 set of neuron params
+                            keys correspond to parameter names
+        
+        Neuron params: {'name', 'C', 'k', 'v_r', 'v_t', 'v_peak', 'a', 'b', 'c', 'd'
+                        'e', 'f', 'tau'}
+
+
+        Creates a batch of N neuron models with the params.
+
+        """
+        # convert params_list to pandas dataframe
+        if not isinstance(params_df, pd.DataFrame):
+            params_df = pd.DataFrame(params_df)
+
+        self.N_models = len(params_df)
+        self.name = params_df['name'].to_numpy(dtype = str)
+        self.isFS = (np.char.find(self.name, "FS")!=-1)     # bool array, where the neuron is of FS type.
+        self.k = params_df['k'].to_numpy(dtype = np.float64)
+        self.C = params_df['C'].to_numpy(dtype = np.float64)
+        self.v_r = params_df['v_r'].to_numpy(dtype = np.float64)
+        self.v_t = params_df['v_t'].to_numpy(dtype = np.float64)
+        self.v_peak = params_df['v_peak'].to_numpy(dtype = np.float64)
+        self.a = params_df['a'].to_numpy(dtype = np.float64)
+        self.b = params_df['b'].to_numpy(dtype = np.float64)
+        self.c = params_df['c'].to_numpy(dtype = np.float64)
+        self.d = params_df['d'].to_numpy(dtype = np.float64)
+        self.e = params_df['e'].to_numpy(dtype = np.float64)
+        self.f = params_df['f'].to_numpy(dtype = np.float64)
+        self.tau = params_df['tau'].to_numpy(dtype = np.float64)
+        #self.E_syn = np.array([p['E_syn'] for p in params_list])
+
+        self.x = np.zeros((self.N_models, 3))
+        self.t = np.zeros(self.N_models)
+    
+    def Initialise(self, x_start, t_start):
+        """
+        Apply initial conditions to each neuron.
+
+        IN
+            x_start:        numpy array (N_models, 3)
+            t_start:        numpy array (N_models)
+        
+        """
+        self.x = np.array(x_start, dtype = np.float64)
+        self.t = np.array(t_start, dtype = np.float64)
+    
+    def neuron_model(self, x, w_delay, I):
+        """
+        update rule for the izhikevich neuron with autapse
+
+        IN
+            x:          value of membrane variables, shape: (N_models, 3)
+            w_delay:    autaptic currents at the time delay, shape: (N_models)
+            I:          injected current, shape: (N_models)
+
+        OUT
+            arr:        numpy array representing all update values.
+                        same shape as x.
+        """
+        v, u, w = x.T
+
+        dv = (1/self.C) * (self.k * (v - self.v_r) * (v - self.v_t) - u + w_delay + I)
+
+        
+        du = np.zeros(np.shape(u))
+        # FS neurons have a nonlinear u-nullcline.
+
+        cond_FS_hyperpolarized = self.isFS & (v < -55)  # is FS and hyperpolarized
+        cond_FS_depolarized = self.isFS & (v >= -55)    # is FS and depolarized 
+        cond_notFS = ~self.isFS # not FS
+        # update FS neuron
+        du[cond_FS_hyperpolarized] = self.a[cond_FS_hyperpolarized] * (-1. * u[cond_FS_hyperpolarized]) # where neuron is FS and v < -55, U = 0
+        du[cond_FS_depolarized] = self.a[cond_FS_depolarized] * (0.025 * (v[cond_FS_depolarized] + 55.)**3 - u[cond_FS_depolarized])
+        # all other neurons are normal
+        du[cond_notFS] = self.a[cond_notFS] * (self.b[cond_notFS] * (v[cond_notFS] - self.v_r[cond_notFS]) - u[cond_notFS])
+        du[cond_notFS] = self.a[cond_notFS] * (self.b[cond_notFS] * (v[cond_notFS] - self.v_r[cond_notFS]) - u[cond_notFS])
+        
+        dw = -1 * self.e * w
+
+        return np.array([dv, du, dw]).T
+    
+    def update_batch(self, dt, N_iter, I_inj, w_prev = []):
+        """
+        Simulates the response of all neurons to I_inj
+
+        IN
+            dt:         time step in ms
+            N_iter:     total number of time_steps
+            I_inj:      timeseries of injected currents, shape: (N_models, N_iter)
+            w_prev:     array, autapse currents prior to sim start - shape: (N_models, delay_steps)
+                        if different tau, pad this list with np.nan with pad_end = False
+
+        OUT:
+            X:          value of all membrane variables through the trial
+                        shape: (N_models, N_iter)
+            T:          corresponding time values, shape: (N_iter)
+            spikes:     spike times for each neuron, shape: (N_models, )
+        
+        """
+
+        delay_steps = (self.tau / dt).astype(int)
+
+
+        if len(w_prev) == 0:
+            w_prev = np.zeros(shape = (self.N_models, np.max(delay_steps))) # assume no prior spikes
+
+
+        X = np.zeros((self.N_models, 3, N_iter), dtype = np.float64)
+        X[:, :, 0] = self.x    # (N_models, 3, 1)
+
+        T = np.linspace(0, (N_iter - 1) * dt, N_iter)
+        spike_times = [[] for _ in range(self.N_models)]
+
+
+        for n in tqdm(range(1, N_iter)):  # each neuron updated simultaneously with vectorization
+
+            if n <= np.max(delay_steps): # early in sim
+
+                w_tau1 = np.zeros(self.N_models)                
+                tau_idx = np.nonzero(~(n <= delay_steps))                             # indices that need updating
+                prev_idx = np.nonzero(n <= delay_steps)                               # where delay_steps extends prior to the sim start
+                w_tau1[tau_idx] = X[tau_idx, 2, n - delay_steps[tau_idx]-1]           # get w at the delay
+                w_tau1[prev_idx] = w_prev[prev_idx, n - delay_steps[prev_idx] - 1]
+                
+                k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])                 # first RK param
+                
+                w_tau2 = np.zeros(self.N_models)  
+                bool_idx0 = np.nonzero(n <= delay_steps - 1)         # delay_steps extends before the sim start
+                bool_idx1 = np.nonzero(delay_steps == 0.0)           # case where there is no delay, need to estimate w_tau2
+                bool_idx2 = np.nonzero(n > delay_steps - 1)          # case where w_tau2 is has been calculated previously
+
+                w_tau2[bool_idx0] = w_prev[bool_idx0, n - delay_steps[bool_idx0]]
+                w_tau2[bool_idx1] = self.x[bool_idx1, 2] + k1[bool_idx1, 2] * dt            # update under first condition
+                w_tau2[bool_idx2] = X[bool_idx2, 2, n - delay_steps[bool_idx2]]             # update under other condition
+
+                k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])               # second RK param
+
+            else: # all neurons are beyond delay steps
+                rows = np.arange(np.shape(X)[0])            # all rows
+                w_tau1 = X[rows, 2, n - delay_steps - 1]                    # get w at the delay - should be shape (2, )
+                k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])           # first RK param
+                
+                w_tau2 = np.zeros(self.N_models)  
+                bool_idx1 = np.nonzero(delay_steps == 0.0)[0]            
+                bool_idx2 = np.nonzero(delay_steps != 0.0)[0] 
+                w_tau2[bool_idx1] = self.x[bool_idx1, 2] + k1[bool_idx1, 2] * dt        # update under first condition
+                w_tau2[bool_idx2] = X[bool_idx2, 2, n - delay_steps[bool_idx2]]         # update under other condition
+                k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])           # second RK param
+
+            # update with RK2
+            self.x = self.x + dt * (k1 + k2)/2.
+            self.t = self.t + dt
+
+            # Check for spikes and reset
+            idx = np.nonzero(self.x[:, 0] >= self.v_peak) # 1 at indices that need updating
+            self.x[idx, 0] = self.c[idx]
+            self.x[idx, 1] += self.d[idx]
+            self.x[idx, 2] += self.f[idx]
+            
+            for i in idx[0]: # loop through the indices that have been updated
+                spike_times[i].append(self.t[i] - dt) # append the time of spike.
+            
+            X[:, :, n] = self.x
+
+        spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
+    
+        # shift the autapse current array values to line up with the actual times
+        for i, delay in enumerate(delay_steps):
+            if delay != 0:
+                X[i, 2, :] = np.roll(X[i, 2, :], delay)
+                X[i, 2, :delay] = w_prev[i, -delay:]
+
+        return X, T, spike_times
+
+
+    """
+        This function should only return the model equations corresponding to the AQUA model.
+        It can have either a simple or biexponential autapse.
+        
+        Creation of the NeuronGroup and variables should be done outside this function...
+    """
+    def meetBrian(self, stimulus_name, biexponential = False, t_a1 = 1., t_a2 = 5.):
+        """
+            Returns the brian2 version of the AQUA model.
+            parameters are pre-initialised aside for I_inj
+
+            IN:
+                self:               existing batch Object
+                stimulus_name:      name of the TimedArray Object which will store the input current to this batch of neurons.
+                biexponential:      whether to use the biexponential autapse model
+                t_a1, t_a2;         if biexponential, time constants for the model.
+
+            OUT:
+                G:          brian2 NeuronGroup
+                autapses:   brian2 Synapses
+
+        """
+
+        # separate neuron equation for FS
+        if np.all(self.isFS == 1):
+            # U = (v < -55) / 0.025*(v + 55)**3 : 0. : 1
+            print("ALL FS!!!")
+            ODEs = '''
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + g_total))/ms : 1
+        du/dt = a*(int(v>=-55)*(0.025*(v+55)**3) - u)/ms : 1'''
+        elif np.all(self.isFS == 0):
+            ODEs = '''
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + g_total))/ms : 1
+        du/dt = (a * (b*(v-v_r) - u))/ms : 1'''
+        else:
+            print("Cannot mix FS and non-FS populations!!!")
+            return
+
+        if biexponential:   # biexponential autapse
+            dw = '''
+        dw/dt = ((t_a2 / t_a1) ** (t_a1 / (t_a2 - t_a1))*x-w)/t_a1/ms : 1
+        dx/dt = -x/t_a2/ms : 1
+        t_a1 : 1
+        t_a2 : 1
+        '''
+        else:   # standard autapse model
+            dw = '''
+        dw/dt = (-e_a*w)/ms : 1
+        e_a : 1
+        '''
+        variables = '''
+        g_total : 1
+        C : 1
+        k : 1
+        v_r : 1
+        v_t : 1
+        v_peak : 1
+        a : 1
+        b : 1
+        c : 1
+        d : 1
+        f : 1
+        '''
+
+        EQS = ODEs + dw + variables
+
+        RESET = '''
+        v = c
+        u += d
+        '''
+
+        G = NeuronGroup(self.N_models, EQS, threshold = 'v >= v_peak', reset = RESET, method = 'rk2', namespace = {'stimulus': stimulus_name})
+
+
+        if biexponential:
+            syn_reset = 'x += f'
+        else:
+            syn_reset = 'w += f'
+        
+        # create autapses
+        autapses = Synapses(G, G, on_pre = syn_reset)
+        autapses.connect(condition = 'i == j')
+        autapses.delay = self.tau*ms
+
+
+        # Intialise conditions
+        G.v = self.x[:, 0]
+        G.u = self.x[:, 1]
+        G.w = self.x[:, 2]
+
+        # initialise variables
+        G.C = self.C
+        G.k = self.k
+        G.v_r = self.v_r
+        G.v_t = self.v_t
+        G.v_peak = self.v_peak
+        G.a = self.a
+        G.b = self.b
+        G.c = self.c
+        G.d = self.d
+        G.f = self.f
+
+        # split btw biexponential or not
+        if biexponential:
+            G.t_a1 = t_a1
+            G.t_a2 = t_a2
+        else:
+            G.e_a = self.e
+
+
+        return G, autapses
+
+
+    def get_params(self, i):
+        # returns the dictionary of params for neuron i
+
+        dict = {'name': self.name[i],
+                'k': self.k[i],
+                'C': self.C[i],
+                'v_r': self.v_r[i],
+                'v_t': self.v_t[i],
+                'v_peak': self.v_peak[i],
+                'a': self.a[i],
+                'b': self.b[i],
+                'c': self.c[i],
+                'd': self.d[i],
+                'e': self.e[i],
+                'f': self.f[i],
+                'tau': self.tau[i]}
+
+        return dict
+    
+    def get_net_autapse_currents(self):
+        """
+        Returns the net current from autapses in the entire batch.
+        If infinite decay time, then np.nan is returned in that element.
+        
+        """
+        a = np.empty(self.N_models)
+        a.fill(np.nan)
+        return np.divide(self.f, self.e, out = a, where=self.e!=0.)
+
+    def get_mean_autapse_delays(self):
+        """
+        Returns the time at which half the autapse is injected
+        Defined here as the time delay plus the half-life of decay.
+        
+        """
+        a = np.empty(self.N_models)
+        a.fill(np.nan)
+
+        return self.tau + np.divide(np.log(2), self.e, out = a, where = (self.f != 0) & (self.e != 0))
+        
+    def get_threshold(self, idx, I_min = 1, I_max = 500):
+        """ 
+            Get the threshold current to generate spiking. Returned value is just below threshold. 
+            
+            param idx:      integer
+                            the index of the neuron for which to find the threshold.
+        
+        """
+
+        T = 4000    # ms
+        dt = 0.1    # ms
+        N_iter = int(T/dt)
+
+        # current values to check
+        I_list = np.linspace(I_min, I_max, 100)
+
+        N_neurons = len(I_list)
+
+        # create parameter array
+        params = [self.get_params(idx) for i in range(N_neurons)]
+
+        # injected current
+        I_inj = np.array([i*np.ones(N_iter) for i in I_list])
+
+        x_start = np.full((N_neurons, 3), fill_value = np.array([self.v_r[idx], 0, 0]))
+        t_start = np.zeros(N_neurons)
+
+        neurons = batchAQUA(params)
+        neurons.Initialise(x_start, t_start)
+
+        # first pass
+        _, _, spikes = neurons.update_batch(dt, N_iter, I_inj)
+
+        if len(spikes[0]) == 0:
+            raise ValueError("Please try a larger range of I values")
+        
+        idx_threshold = np.argwhere(np.isnan(spikes[:, 0]).flatten())[-1]
+        
+        sub_threshold = I_list[idx_threshold]
+        above_threshold = I_list[idx_threshold + 1]
+
+        #refine I_inj to narrow down the threshold
+        I_list_thresh = np.linspace(sub_threshold, above_threshold, N_neurons)
+        I_inj_thresh = np.array([i*np.ones(N_iter) for i in I_list_thresh])
+
+        neurons.Initialise(x_start, t_start)
+        X, _, _ = neurons.update_batch(dt, N_iter, I_inj_thresh)
+
+
+        idx_threshold = np.argwhere(np.all(np.diff(X[:, 0, -20:], axis = 1) == 0., axis = 1))[-1]
+
+        threshold = I_list_thresh[idx_threshold][0]     # closer estimate of the threshold
+        steady_state = X[idx_threshold, :, -1][0]       # equilibrium point
+
+        return threshold, steady_state      
+
+
+
+
+
+""" - - - HELPER FUNCTIONS - - - """
+
+def convert_spikes_to_aqua(spike_train):
+    """
+    Converts a SpikeMonitor.spike_trains() output to the same output from the AQUA class
+    """
+    spikes = []
+    for key in spike_train.keys():
+        spikes.append(list(spike_train[key]/ms))
+    
+    spikes = pad_list(spikes)
+
+    return spikes
+
+def binarise_spikes(spikes, dt, N_iter):
+    ''' Convert AQUA spike outputs to binary spike trains '''
+    N_neurons = np.shape(spikes)[0]
+
+    spike_idx = (spikes / dt).astype(int)     # converts spike times to timesteps
+
+    spike_train = np.zeros((N_neurons, N_iter))
+
+    for n in range(N_neurons):
+        spike_train[n][spike_idx[n]] = 1.
+
+    return spike_train
+
+
+
+def pad_list(lst, pad_value=np.nan, pad_end = True):
+    max_length = max(len(sublist) for sublist in lst)
+    if pad_end:     # pad the end of the list
+        return np.array([sublist + [pad_value] * (max_length - len(sublist)) for sublist in lst])
+    else:           # pad the front of the list
+        return np.array([[pad_value] * (max_length - len(sublist)) + sublist for sublist in lst])
+    

@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: AQUA
+Version: 0.1.0
+Summary: Adaptive QUadratic integrate-and-fire neuron with Autapse
+Author: Hazem Toutounji
+Author-email: Liam McSweeney <lpmcsweeney1@sheffield.ac.uk>
+Keywords: model,neuron,izhikevich model,autapse

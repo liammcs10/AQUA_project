@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools"]
+
+[project]
+name = "AQUA"
+version = "0.1.0"
+description = "Adaptive QUadratic integrate-and-fire neuron with Autapse"
+authors = [{name = "Liam McSweeney", email = "lpmcsweeney1@sheffield.ac.uk"}, {name = "Hazem Toutounji"}]
+keywords = ["model", "neuron", "izhikevich model", "autapse"]
+license = {file = "LICENSE"}
+
+
