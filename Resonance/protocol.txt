@@ -26,11 +26,12 @@ Other interesting Questions (maybe relating to bursting project):
 
 Take autapse params from Yin et al. 2018 and Pan et al. for excitatory autapse
 
-Yin et al. 2018: f ~ 150 pA [27-430pA]
+Yin et al. 2018: f ~ 150 pA +- 11 pA[27-430pA]
                  decay time constant = 4.6 ms
-                 => e ~ 0.217 (4.63 +- 0.11 ms)
+                 => e ~ 0.216 +- 0.006 (4.63 +- 0.11 ms)
                  onset time 2ms, rise time 1ms 
-                 => tau ~ 2-3ms (+- 0.07 ms)?
+                 => tau ~ 1.94ms (+- 0.05 ms)
+                 =>rise time ~ 0.99 +- 0.02 ms
 
 Pan et al. 2025: f ~ 130 +- 16 pA
                  e ~ 0.182 +- 0.2 1/ms (5.48 +- 0.45 ms)
