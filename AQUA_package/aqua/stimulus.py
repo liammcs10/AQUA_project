@@ -137,11 +137,11 @@ def filtered_white_noise(T, dt, amplitude = None, cutoff = 30, poles = 5):
     """
 
     # T is the sample period
-    fs = 1000 / dt              # sampling frequency, Hz
+    fs = 1000 / dt                      # sampling frequency, Hz
     N_settle = int((poles/cutoff) * fs)
-    N = int(T * fs) + 2*N_settle      # number of samples drawn
-    nyq = 0.5 * fs              # nyquist frequency
-    order = 2                   # approximate sine with a quadratic
+    N = int(T * fs) + 2*N_settle        # number of samples drawn
+    nyq = 0.5 * fs                      # nyquist frequency
+    order = 2                           # approximate sine with a quadratic
 
     WN = (np.random.uniform(size = N))    # white noise
 

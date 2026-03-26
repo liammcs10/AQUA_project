@@ -6,8 +6,8 @@ Utils script with useful analysis functions when studying AQUA neuronss
 '''
 
 ### local imports
-from AQUA.batchAQUA_general import *
-from AQUA.AQUA_general import AQUA
+from .batchAQUA_general import *
+from .AQUA_general import AQUA
 
 
 ## global imports
@@ -74,6 +74,8 @@ def STA(spikes, I_inj, dt, window = 50):
                     simulation timestep
     window:         int
                     number of timesteps to average before each spike
+    
+    
     Returns
     - - - 
     STA:            ndarray (N_neurons, window)

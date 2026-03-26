@@ -16,8 +16,8 @@ Checks:
 
 
 import numpy as np
-from AQUA.AQUA_general import AQUA
-from AQUA.batchAQUA_general import batchAQUA, pad_list
+from .AQUA_general import AQUA
+from .batchAQUA_general import batchAQUA, pad_list
 import unittest
 
 

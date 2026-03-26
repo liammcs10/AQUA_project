@@ -1,5 +1,5 @@
 Metadata-Version: 2.4
-Name: AQUA
+Name: aqua
 Version: 0.1.0
 Summary: Adaptive QUadratic integrate-and-fire neuron with Autapse
 Author: Hazem Toutounji

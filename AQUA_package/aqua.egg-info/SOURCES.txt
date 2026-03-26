@@ -1,0 +1,12 @@
+pyproject.toml
+aqua/AQUA_general.py
+aqua/__init__.py
+aqua/batchAQUA_general.py
+aqua/plotting_functions.py
+aqua/stimulus.py
+aqua/test_AQUA.py
+aqua/utils.py
+aqua.egg-info/PKG-INFO
+aqua.egg-info/SOURCES.txt
+aqua.egg-info/dependency_links.txt
+aqua.egg-info/top_level.txt

@@ -1,12 +1,12 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 [project]
-name = "AQUA"
+name = "aqua"
 version = "0.1.0"
 description = "Adaptive QUadratic integrate-and-fire neuron with Autapse"
 authors = [{name = "Liam McSweeney", email = "lpmcsweeney1@sheffield.ac.uk"}, {name = "Hazem Toutounji"}]
 keywords = ["model", "neuron", "izhikevich model", "autapse"]
 license = {file = "LICENSE"}
-
 

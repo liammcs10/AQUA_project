@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from AQUA.batchAQUA_general import batchAQUA
+from .batchAQUA_general import batchAQUA
 
 
 
