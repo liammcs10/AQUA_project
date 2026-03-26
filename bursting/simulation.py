@@ -15,17 +15,10 @@ simulations relatively fast.
 """
 
 
-
-
-# append AQUA directory to sys.path
-import sys
-sys.path.append("..\\") # parent directory
-
-
-from AQUA_general import AQUA
-from batchAQUA_general import *
-from plotting_functions import *
-from stimulus import step_current
+from AQUA.AQUA_general import AQUA
+from AQUA.batchAQUA_general import *
+from AQUA.plotting_functions import *
+from AQUA.stimulus import step_current
 
 import numpy as np
 import matplotlib.pyplot as plt

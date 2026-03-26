@@ -13,13 +13,11 @@ simulations relatively fast.
 
 """
 
-import sys
-sys.path.append("..//") # parent directory
 
-from AQUA_general import AQUA
-from batchAQUA_general import batchAQUA
-from plotting_functions import *
-from stimulus import *
+from AQUA.AQUA_general import AQUA
+from AQUA.batchAQUA_general import batchAQUA
+from AQUA.plotting_functions import *
+from AQUA.stimulus import *
 
 import numpy as np
 import matplotlib.pyplot as plt
