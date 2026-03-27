@@ -357,7 +357,7 @@ class batchAQUA:
         
         """
 
-        T = 4000    # ms
+        T = 6000    # ms
         dt = 0.1    # ms
         N_iter = int(T/dt)
 
@@ -394,10 +394,12 @@ class batchAQUA:
         I_inj_thresh = np.array([i*np.ones(N_iter) for i in I_list_thresh])
 
         neurons.Initialise(x_start, t_start)
-        X, _, _ = neurons.update_batch(dt, N_iter, I_inj_thresh)
+        X, _, spikes = neurons.update_batch(dt, N_iter, I_inj_thresh)
 
 
-        idx_threshold = np.argwhere(np.all(np.diff(X[:, 0, -20:], axis = 1) == 0., axis = 1))[-1]
+        
+        #idx_threshold = np.argwhere(np.all(np.diff(X[:, 0, -20:], axis = 1) == 0., axis = 1))[-1]
+        idx_threshold = np.argwhere(np.isnan(spikes[:, 0]).flatten())[-1]
 
         threshold = I_list_thresh[idx_threshold][0]     # closer estimate of the threshold
         steady_state = X[idx_threshold, :, -1][0]       # equilibrium point

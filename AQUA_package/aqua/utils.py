@@ -24,18 +24,19 @@ def convert_spikes_to_aqua(spike_train):
 
     return spikes
 
+
 def binarise_spikes(spikes, dt, N_iter):
     ''' Convert AQUA spike outputs to binary spike trains '''
     N_neurons = np.shape(spikes)[0]
 
-    spike_idx = (spikes / dt).astype(int)     # converts spike times to timesteps
-
+    spike_idx = (spikes / dt).astype(int)       # converts spike times to timesteps
     spike_train = np.zeros((N_neurons, N_iter))
 
     for n in range(N_neurons):
         spike_train[n][spike_idx[n]] = 1.
 
     return spike_train
+
 
 def pad_list(lst, pad_value=np.nan, pad_end = True):
     max_length = max(len(sublist) for sublist in lst)
@@ -44,12 +45,13 @@ def pad_list(lst, pad_value=np.nan, pad_end = True):
     else:           # pad the front of the list
         return np.array([[pad_value] * (max_length - len(sublist)) + sublist for sublist in lst])
 
+
 def embed(X, window):
     ''' reorder the time series X into (N - window) rows of length window '''
     T = np.shape(X)[0]
     Y = np.zeros(((T - window, window)))
-    for i in range(T - window):
-        Y[i] = X[i: i + window]
+    for i in range(0, T-window):
+        Y[i] = X[i: i + window]     # get the 'window' time bins before 'i'
     
     return Y
 
@@ -87,14 +89,14 @@ def STA(spikes, I_inj, dt, window = 50):
     # ensure the stimulus has 0 mean
     I_inj = np.array([I_inj[n] - np.mean(I_inj[n]) for n in range(N_neurons)])
 
-    #restructure spikes as a binary time series
-    binary_spikes = binarise_spikes(spikes, dt, N_iter)
+    # restructure spikes as a binary time series
+    binary_spikes = binarise_spikes(spikes, dt, N_iter)[:, window:]    # only take (N - window) elements
     
     STA = np.zeros((N_neurons, window))
     for n in range(N_neurons):
         X = embed(I_inj[n], window)
 
-        STA[n] = X.T * binary_spikes[n]
+        STA[n] = np.dot(X.T, binary_spikes[n])
 
     return STA
 
