@@ -7,7 +7,7 @@ def command_line():
 
     parser.add_argument('--sim', help='Whether to run simulation', action = 'store_true')
     parser.add_argument('--config', help='Configuration file for the simulation', type = str)
-    parser.add_argument('--outfile', help='output filename as .pickle. Also used for plotting.', type = str)
+    #parser.add_argument('--outfile', help='output filename as .pickle. Also used for plotting.', type = str)
     #parser.add_argument('-o', '--out', help='output file name', type = str)
     parser.add_argument('--save', help='whether or not to save the output file', action = 'store_true')
     # Can enforce the type of the value expected, or options from a list. 

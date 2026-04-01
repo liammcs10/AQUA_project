@@ -14,10 +14,10 @@ simulations relatively fast.
 """
 
 
-from AQUA.AQUA_general import AQUA
-from AQUA.batchAQUA_general import batchAQUA
-from AQUA.plotting_functions import *
-from AQUA.stimulus import *
+from aqua.AQUA_general import AQUA
+from aqua.batchAQUA_general import batchAQUA
+from aqua.plotting_functions import *
+from aqua.stimulus import *
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -67,7 +67,6 @@ def main():
     # parse arguments from the command line
     args = CLI.command_line()
 
-
     if args.sim:    # Run the whole simulation if --sim is passed
         print("Running simulation...")
         
@@ -76,19 +75,12 @@ def main():
             print("No config file passed... exiting")
             quit()
 
-        # check for an output file
-        if args.outfile is None:
-            print("No data file given... exiting")
-            quit()
-
         # extract params from config file and store in dictionary
         conf = CF.read_conf(args.config)
         print("Config extracted...")
         df = simulation.sim(args, conf)
         print("Simulation complete...")
     
-    
-    # Can optionally plot the data below...
-    
+
 
 main()

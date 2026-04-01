@@ -15,10 +15,11 @@ simulations relatively fast.
 """
 
 
-from AQUA.AQUA_general import AQUA
-from AQUA.batchAQUA_general import *
-from AQUA.plotting_functions import *
-from AQUA.stimulus import step_current
+from aqua.AQUA_general import AQUA
+from aqua.batchAQUA_general import *
+from aqua.plotting_functions import *
+from aqua.stimulus import step_current, filtered_white_noise_fast
+from aqua.utils import STA
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -54,7 +55,7 @@ def sim(args, conf):
                 saved as a .csv and includes run params
 
     """
-
+    print("- - - SIMULATION - - -")
     # neuron params to be used for every simulation below
     params = cast_to_float(conf["Neuron"])
 
@@ -65,7 +66,6 @@ def sim(args, conf):
         tau_vals = np.array(conf["Autapse"]["tau"].split(", "), dtype = np.float64)
     elif conf["Autapse"]["mode"] == 'uniform':    # mode = 'uniform' - the range is supplied and the number of params
         # 0 - start value, 1 - end value, 2 - number of samples
-        print("- - - UNIFORM - - -")
         f_arr = np.array(conf["Autapse"]["f"].split(", "), dtype = np.float64)
         f_vals = np.linspace(f_arr[0], f_arr[1], int(f_arr[2]))
         e_arr = np.array(conf["Autapse"]["e"].split(", "), dtype = np.float64)
@@ -74,7 +74,6 @@ def sim(args, conf):
         tau_vals = np.linspace(tau_arr[0], tau_arr[1], int(tau_arr[2]))
     elif conf["Autapse"]["mode"] == 'normal':       # mode = 'normal' - params sampled from a normal distribution with mean, std, N_samples
         # 0 - mean, 1 - std, 2 - N_samples
-        print("- - - NORMAL - - -")
         f_arr = np.array(conf["Autapse"]["f"].split(", "), dtype = np.float64)
         f_vals = np.random.normal(f_arr[0], f_arr[1], int(f_arr[2]))
         e_arr = np.array(conf["Autapse"]["e"].split(", "), dtype = np.float64)
@@ -123,19 +122,14 @@ def sim(args, conf):
     """ RUN THE ANALYSES BELOW - define functions at the end of this script/in a different script"""
     
     # Test 1 - gain modulation on the AQUA batch
-    out_df = gain_modulation(params_df, conf)
+    #gain_modulation(params_df, conf)
 
     # Test 2 - gain modulation on biexponential autapse in brian2
     #out_df = gain_modulation_biexponential(params_df, conf)
 
-    # Test 3
+    # Test 3 - STA
+    calculate_STA(params_df, conf)
 
-
-    # At this stage just save the outputs
-
-    # save the results dict as a pickle
-    with open(args.outfile, 'wb') as file:
-        pickle.dump(out_df, file)
 
 
 
@@ -233,8 +227,13 @@ def gain_modulation(params_df, conf):
         small_df = pd.DataFrame(out_dict)   # convert dictionary to DataFrame
         output_df = pd.concat([output_df, small_df])
 
-
-    return output_df
+    # save the results dict as a pickle
+    name = conf['Neuron']['name']
+    mode = conf['Autapse']['mode']
+    file_sign = conf['Gain']['outfile']
+    filepath = f"{name}//{name}_{mode}_{file_sign}"
+    with open(filepath, 'wb') as file:
+        pickle.dump(output_df, file)
 
 
 
@@ -357,54 +356,102 @@ def gain_modulation_biexponential(params_df, conf):
         small_df = pd.DataFrame(out_dict)   # convert dictionary to DataFrame
         output_df = pd.concat([output_df, small_df])
 
-    return output_df
+    # save the results dict as a pickle
+    name = conf['Neuron']['name']
+    mode = conf['Autapse']['mode']
+    file_sign = conf['Gain']['outfile']
+    filepath = f"{name}//{name}_{mode}_{file_sign}"
+    with open(filepath, 'wb') as file:
+        pickle.dump(output_df, file)
 
-""" - - - - HELPER FUNCTIONS - - - - """
 
-def get_F(spikes, instant = False):
+def calculate_STA(params, conf):
     """
-    Returns an array of the desired firing frequency
+    Calculate the STA for each neuron and autapse combination.
+    Calculated from a filtered white noise input.
+
+    """
+
+    conf['STA'] = cast_to_float(conf['STA'])
+    T = conf['STA']['T']        # ms
+    dt = conf['STA']['dt']      # ms
+    N_iter = int(T/dt)          # number of iterations
+
+    # define the injected currents...
+    N_neurons = len(params)                                 # number of neurons
+    N_F = int(conf['STA']['N_F'])                                # number of frequency filters
+    N_per_F = int(conf['STA']['N_per_F'])                          # number of repetitions of each filter
+    F_start = conf['STA']['F_start']                        # lowest frequency filter
+    F_stop = conf['STA']['F_stop']                          # highest frequency filter
+    filter_freq = np.linspace(F_start, F_stop, N_F)   # actual frequencies
+    amplitude = conf['STA']['amplitude']                    # amplitude of the signal
+    window = int(conf['STA']['window'])
+
+
+    batch_thresh = batchAQUA(params)     # create a batch with only the non-autaptic neuron
+    thresh, steady_state = batch_thresh.get_threshold(idx = 0)
+    print("- - - - - - -")
+    print(thresh)
+    print(steady_state)
+
+    STA_dict = {}
+    # Loop over each frequency for memory reasons
+    for f in filter_freq:
+        print(f"freq: {f}")
+        # get the filtered white noise
+        N_sims = N_per_F * N_neurons
+        print(f"N_sims: {N_sims}")
+        I_noise = np.array([filtered_white_noise_fast(T/1000., dt, amplitude = amplitude, cutoff = f) for i in range(N_per_F)])     # very slow
+        I_fwn = np.zeros((N_sims, N_iter))
+        
+        # Need to scale up parameter dict to match N_sims
+        sim_params = pd.DataFrame(data = [], columns = params.keys())
+        for i in range(N_per_F):
+            I_fwn[i*N_neurons:(i+1)*N_neurons] = I_noise[i]
+            sim_params = pd.concat([sim_params, params], ignore_index = True)
+
+        I_inj = thresh + I_fwn      # bring to threshold
+
+        # store the data
+        sta = np.zeros((N_sims, window))
+
+        # Need to break up the simulation
+        N_per_loop = int(conf['STA']['N_per_loop'])
+        N_loops = N_sims // N_per_loop
+        for n in range(N_loops):
+            if n == N_loops - 1:
+                N_in_loop = N_sims - (N_loops - 1)*N_per_loop
+            else:
+                N_in_loop = N_per_loop
+
+            # get proper indices
+            idx_start = n * N_per_loop
+            idx_end = idx_start + N_in_loop
+
+            # create batch
+            batch = batchAQUA(sim_params[idx_start:idx_end])
+            # initialise
+            x_start = np.full((N_in_loop, 3), fill_value = steady_state)
+            t_start = np.zeros(N_in_loop)
+            batch.Initialise(x_start, t_start)
+
+            _, _, spikes = batch.update_batch(dt, N_iter, I_inj[idx_start:idx_end])
+
+            # calculate the STA
+            sta[idx_start:idx_end] = STA(spikes, I_inj[idx_start:idx_end], dt, window = window)
+        # average the STA for each neuron
+        neuron_dict = {}
+        for i in range(N_neurons):
+            sta_mean = np.mean(sta[i::N_neurons], axis = 0)
+            neuron_dict[i] = sta_mean
+        
+        STA_dict[f] = neuron_dict
     
-    :param spikes: array of spike times
-    :param instant: boolean, whether to get instantaneous firing frequency or not
+    # save the results dict as a pickle
+    name = conf['Neuron']['name']
+    mode = conf['Autapse']['mode']
+    file_sign = conf['STA']['outfile']
+    filepath = f"{name}//{name}_{mode}_{file_sign}"
+    with open(filepath, 'wb') as file:
+        pickle.dump(STA_dict, file)
 
-    """
-    N_neurons = len(spikes)
-    F = np.zeros(N_neurons)
-
-    for n in range(N_neurons):
-        if np.isnan(spikes[n]).all() or np.sum(~np.isnan(spikes[n])) <= 3:      # if no spikes or 1 spike
-            F[n] = np.nan
-        else:
-            if instant:     # get instant firing frequency
-                F[n] = 1000/(spikes[n][1] - spikes[n][0])           # first and second spikes
-            else:           # get steady firing frequency (might be same as initial)
-                spike_times = spikes[n][~np.isnan(spikes[n])]
-                n_spikes = len(spike_times)
-                ceil = np.ceil(n_spikes/2)
-                freq = 1000/(np.ediff1d(spike_times[-int(ceil):]))
-                F[n] = np.max(freq)     # largest firing frequency in the steady-state
-
-    return F
-
-
-def cast_to_float(data_dict):
-    """
-    Casts the values of a dictionary to float if conversion is possible.
-    Otherwise, the original value is retained.
-    """
-    new_dict = {
-        key: float(value) 
-        if isinstance(value, (int, str)) and value not in ('', None) and is_float(value)
-        else value
-        for key, value in data_dict.items()
-    }
-    return new_dict
-
-def is_float(value):
-    """Helper function to safely check if a string can be converted to float."""
-    try:
-        float(value)
-        return True
-    except (ValueError, TypeError):
-        return False
