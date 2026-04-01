@@ -8,7 +8,7 @@ e.g.
 
 """
 import numpy as np
-from scipy.signal import butter, filtfilt, sosfiltfilt
+from scipy.signal import butter, sosfilt
 
 
 
@@ -160,3 +160,42 @@ def filtered_white_noise(T, dt, amplitude = None, cutoff = 30, poles = 5):
     y *= scale
 
     return y
+
+def filtered_white_noise_fast(T, dt, amplitude=None, cutoff=30, poles=5):
+    """ 
+    Generate low-pass filtered white noise time signal.
+    
+    param:
+        T:          signal duration (in sec)
+        dt:         signal timestep (in ms)
+        amplitude:  amplitude of the output signal
+        cutoff:     cutoff frequency in Hz
+        poles:      order of the butterworth filter
+    """
+    
+    fs = 1000.0 / dt                           # sampling frequency, Hz
+    N = int(T * fs)                            # target number of samples
+    N_settle = int((poles / cutoff) * fs)      # warm-up samples for the filter
+    
+    # Use modern, faster NumPy RNG. 
+    # Gaussian (standard_normal) is standard for physical white noise simulation.
+    rng = np.random.default_rng()
+    WN = rng.standard_normal(N + N_settle)
+    
+    # Generate filter coefficients
+    sos = butter(poles, cutoff, btype='lowpass', fs=fs, output='sos')
+    
+    # Use single-pass sosfilt (2x faster than sosfiltfilt)
+    # Slice off the warm-up transient at the start
+    y = sosfilt(sos, WN)[N_settle:]
+    
+    # Remove mean
+    y -= np.mean(y)
+    
+    # Scale amplitude if requested
+    if amplitude is not None:
+        y_max = np.max(np.abs(y))
+        y *= (amplitude / y_max)
+    
+    return y
+

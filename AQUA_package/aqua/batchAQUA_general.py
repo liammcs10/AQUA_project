@@ -356,7 +356,7 @@ class batchAQUA:
                             the index of the neuron for which to find the threshold.
         
         """
-
+        print('- - threshold - -')
         T = 6000    # ms
         dt = 0.1    # ms
         N_iter = int(T/dt)
