@@ -1,6 +1,31 @@
 """
 A batch simulation version of the AQUA class. 
 
+Cortical neurons and parameter values.
+
+pyramidal cells: L2/3/5/6
+RS = {'name': 'RS', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
+     'a': 0.03, 'b': -2, 'c': -50, 'd': 100, 'e': 0., 'f': 0., 'tau': 0.}    # Class 1
+
+pyramidal cells: all layers, abundantly L5
+IB = {'name': 'IB', 'C': 150, 'k': 1.2, 'v_r': -75, 'v_t': -45, 'v_peak': 50,
+     'a': 0.01, 'b': 5, 'c': -56, 'd': 130, 'e': 0., 'f': 0., 'tau': 0.}
+
+pyramidal cells: L2-4, abundantly L3
+CH = {'name': 'CH', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
+     'a': 0.03, 'b': -2, 'c': -40, 'd': 100, 'e': 0., 'f': 0., 'tau': 0.}
+
+nonpyramidal interneurons (local inter-laminar inhibition)
+LTS = {'name': 'LTS', 'C': 100, 'k': 1, 'v_r': -56, 'v_t': -42, 'v_peak': 35,
+     'a': 0.03, 'b': 8, 'c': -50, 'd': 100, 'e': 0., 'f': 0., 'tau': 0.}   # Border of integrator-resonator (Bogdanov-Takens)
+
+inhibitory basket or chandelier cells (local intra-laminar inhibition)
+FS = {'name': 'FS', 'C': 20, 'k': 1, 'v_r': -55, 'v_t': -40, 'v_peak': 25,
+     'a': 0.2, 'b': -2, 'c': -45, 'd': 0, 'e': 0., 'f': 0., 'tau': 0.}   # subcritical Andronov-Hopf (class 2)
+    * requires a nonlinear u-nullcline (horizontal in the hyperpolarized range)
+
+MSN = {'name': 'MSN', 'C': 50, 'k': 1, 'v_r': -80, 'v_t': -25, 'v_peak': 40,
+     'a': 0.01, 'b': -20, 'c': -55, 'd': 150, 'e': 0., 'f': 0., 'tau': 0.} # bistable (SN or subAH)(striatum projection neuron)
 
 """
 
@@ -201,7 +226,7 @@ class batchAQUA:
         
         Creation of the NeuronGroup and variables should be done outside this function...
     """
-    def meetBrian(self, stimulus_name, biexponential = False, t_a1 = 1., t_a2 = 5.):
+    def meetBrian(self, stimulus_name, synapse_eq = None, biexponential = False, t_a1 = 1., t_a2 = 5.):
         """
             Returns the brian2 version of the AQUA model.
             parameters are pre-initialised aside for I_inj
@@ -218,16 +243,22 @@ class batchAQUA:
 
         """
 
+        if synapse_eq == None:      # separate from the autapse equation
+            synapse_eq = """
+        dI_syn/dt = -(I_syn/t_syn)/ms : 1 
+        t_syn : 1
+        """
+
         # separate neuron equation for FS
         if np.all(self.isFS == 1):
             # U = (v < -55) / 0.025*(v + 55)**3 : 0. : 1
             print("ALL FS!!!")
             ODEs = '''
-        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + g_total))/ms : 1
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + I_syn))/ms : 1
         du/dt = a*(int(v>=-55)*(0.025*(v+55)**3) - u)/ms : 1'''
         elif np.all(self.isFS == 0):
             ODEs = '''
-        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + g_total))/ms : 1
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + I_syn))/ms : 1
         du/dt = (a * (b*(v-v_r) - u))/ms : 1'''
         else:
             print("Cannot mix FS and non-FS populations!!!")
@@ -246,7 +277,6 @@ class batchAQUA:
         e_a : 1
         '''
         variables = '''
-        g_total : 1
         C : 1
         k : 1
         v_r : 1
@@ -259,7 +289,7 @@ class batchAQUA:
         f : 1
         '''
 
-        EQS = ODEs + dw + variables
+        EQS = ODEs + dw + synapse_eq + variables
 
         RESET = '''
         v = c
@@ -270,15 +300,14 @@ class batchAQUA:
 
 
         if biexponential:
-            syn_reset = 'x += f'
+            aut_reset = 'x += f'
         else:
-            syn_reset = 'w += f'
+            aut_reset = 'w += f'
         
         # create autapses
-        autapses = Synapses(G, G, on_pre = syn_reset)
-        autapses.connect(condition = 'i == j')
+        autapses = Synapses(G, G, on_pre = aut_reset)
+        autapses.connect(condition = 'i == j') # self-connections
         autapses.delay = self.tau*ms
-
 
         # Intialise conditions
         G.v = self.x[:, 0]
@@ -296,6 +325,7 @@ class batchAQUA:
         G.c = self.c
         G.d = self.d
         G.f = self.f
+
 
         # split btw biexponential or not
         if biexponential:
