@@ -122,13 +122,13 @@ def sim(args, conf):
     """ RUN THE ANALYSES BELOW - define functions at the end of this script/in a different script"""
     
     # Test 1 - gain modulation on the AQUA batch
-    #gain_modulation(params_df, conf)
+    gain_modulation(params_df, conf)
 
     # Test 2 - gain modulation on biexponential autapse in brian2
     #out_df = gain_modulation_biexponential(params_df, conf)
 
     # Test 3 - STA
-    calculate_STA(params_df, conf)
+    #calculate_STA(params_df, conf)
 
 
 
