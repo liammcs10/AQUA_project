@@ -1,0 +1,19 @@
+name: aqua
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - pandas
+  - matplotlib
+  - seaborn
+  - scipy
+  - tqdm
+  - numpy
+  - line_profiler
+  - pytest
+  - snakeviz
+  - mypy
+  - ipykernel
+  - cupy
+  - brian2
+prefix: C:\Users\liamm\anaconda3\envs\aqua
