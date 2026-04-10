@@ -244,9 +244,11 @@ class batchAQUA:
         """
 
         if synapse_eq == None:      # separate from the autapse equation
+            print("NO SYNAPSE EQUATION")
             synapse_eq = """
         dI_syn/dt = -(I_syn/t_syn)/ms : 1 
         t_syn : 1
+        g_total = I_syn : 1
         """
 
         # separate neuron equation for FS
@@ -254,11 +256,11 @@ class batchAQUA:
             # U = (v < -55) / 0.025*(v + 55)**3 : 0. : 1
             print("ALL FS!!!")
             ODEs = '''
-        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + I_syn))/ms : 1
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + g_total))/ms : 1
         du/dt = a*(int(v>=-55)*(0.025*(v+55)**3) - u)/ms : 1'''
         elif np.all(self.isFS == 0):
             ODEs = '''
-        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + I_syn))/ms : 1
+        dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + g_total))/ms : 1
         du/dt = (a * (b*(v-v_r) - u))/ms : 1'''
         else:
             print("Cannot mix FS and non-FS populations!!!")
@@ -325,7 +327,6 @@ class batchAQUA:
         G.c = self.c
         G.d = self.d
         G.f = self.f
-
 
         # split btw biexponential or not
         if biexponential:

@@ -8,6 +8,7 @@ Utils script with useful analysis functions when studying AQUA neuronss
 ## global imports
 import numpy as np
 import pandas as pd
+import brian2
 from tqdm import tqdm
 
 
@@ -16,10 +17,12 @@ from tqdm import tqdm
 def convert_spikes_to_aqua(spike_train):
     """
     Converts a SpikeMonitor.spike_trains() output to the same output from the AQUA class
+    * spikemon has time in seconds, time is converted to ms here.
+
     """
     spikes = []
     for key in spike_train.keys():
-        spikes.append(list(spike_train[key]/ms))
+        spikes.append(list(spike_train[key]*1000))
     
     spikes = pad_list(spikes)
 
@@ -57,7 +60,6 @@ def embed(X, window):
         Y[i] = X[i: i + window]     # get the 'window' time bins before 'i'
     
     return Y
-
 
 
 def STA(spikes, I_inj, dt, window=50):
@@ -116,6 +118,48 @@ def STA(spikes, I_inj, dt, window=50):
 
     return STA
 
+
+def van_rossum_dist(spikes1, spikes2, filter = None):
+    '''
+    Calculates the van Rossum distance given 2 binary spike time series and a filter
+    
+    '''
+    if filter is None:  # assume inputs already convolved if no filter is passed
+        return np.sum((spikes1 - spikes2)**2)
+    else:
+        s1_filtered = np.convolve(spikes1, filter)
+        s2_filtered = np.convolve(spikes2, filter)
+
+    return np.sum((s1_filtered - s2_filtered)**2)
+
+def rolling_VR_dist(spikes1, spikes2, filter, window = 500):
+    '''
+    Calculates the rolling Van Rossum distance for a time series of synaptic currents
+    
+    Params
+    - - - 
+    spikes1, spikes2:       array
+                            binary time series of spikes
+    window:                 int
+                            number of time steps per window
+
+    '''
+    assert len(spikes1) == len(spikes2), "syn1 and syn2 should be the same length"
+
+    T = len(spikes1) # duration of the time series
+
+    time_VR = np.zeros(T)
+
+    # convolve spikes
+    s1_filtered = np.convolve(spikes1, filter)
+    s2_filtered = np.convolve(spikes2, filter)
+
+    for t in range(T - window):
+
+        #time_VR[t] = van_rossum_dist(spikes1[t+window//2:t+window], spikes2[t+window//2:t+window], filter)
+        time_VR[t+window//2] = van_rossum_dist(s1_filtered[t:t+window], s2_filtered[t:t+window])
+    
+    return time_VR
 
 
 
