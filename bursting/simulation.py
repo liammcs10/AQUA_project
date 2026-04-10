@@ -35,6 +35,8 @@ import CLI
 import CF
 from functions import *
 
+import gc
+
 
 
 
@@ -122,13 +124,13 @@ def sim(args, conf):
     """ RUN THE ANALYSES BELOW - define functions at the end of this script/in a different script"""
     
     # Test 1 - gain modulation on the AQUA batch
-    gain_modulation(params_df, conf)
+    #gain_modulation(params_df, conf)
 
     # Test 2 - gain modulation on biexponential autapse in brian2
     #out_df = gain_modulation_biexponential(params_df, conf)
 
     # Test 3 - STA
-    #calculate_STA(params_df, conf)
+    calculate_STA(params_df, conf)
 
 
 
@@ -394,6 +396,10 @@ def calculate_STA(params, conf):
     print(thresh)
     print(steady_state)
 
+    # get the autapse metrics for the neuron params
+    autapse_currents = batch_thresh.get_net_autapse_currents()
+    autapse_delays = batch_thresh.get_mean_autapse_delays()
+
     STA_dict = {}
     # Loop over each frequency for memory reasons
     for f in filter_freq:
@@ -402,15 +408,15 @@ def calculate_STA(params, conf):
         N_sims = N_per_F * N_neurons
         print(f"N_sims: {N_sims}")
         I_noise = np.array([filtered_white_noise_fast(T/1000., dt, amplitude = amplitude, cutoff = f) for i in range(N_per_F)])     # very slow
-        I_fwn = np.zeros((N_sims, N_iter))
+        I_inj = np.zeros((N_sims, N_iter))
         
         # Need to scale up parameter dict to match N_sims
         sim_params = pd.DataFrame(data = [], columns = params.keys())
         for i in range(N_per_F):
-            I_fwn[i*N_neurons:(i+1)*N_neurons] = I_noise[i]
+            I_inj[i*N_neurons:(i+1)*N_neurons] = I_noise[i]
             sim_params = pd.concat([sim_params, params], ignore_index = True)
 
-        I_inj = thresh + I_fwn      # bring to threshold
+        I_inj = thresh + I_inj      # bring to threshold
 
         # store the data
         sta = np.zeros((N_sims, window))
@@ -439,19 +445,35 @@ def calculate_STA(params, conf):
 
             # calculate the STA
             sta[idx_start:idx_end] = STA(spikes, I_inj[idx_start:idx_end], dt, window = window)
-        # average the STA for each neuron
-        neuron_dict = {}
+        
+        # average the STA for each neuron and store in a dict with the neuron's parameters
+        STA_dict = {}
         for i in range(N_neurons):
             sta_mean = np.mean(sta[i::N_neurons], axis = 0)
-            neuron_dict[i] = sta_mean
+            neuron_dict = {'e': params.iloc[i]['e'], 
+                           'f': params.iloc[i]['f'], 
+                           'tau': params.iloc[i]['tau'],
+                           'autapse current': autapse_currents[i],
+                           'autapse delay': autapse_delays[i],
+                           'sta': sta_mean}
+            STA_dict[i] = neuron_dict
         
-        STA_dict[f] = neuron_dict
-    
-    # save the results dict as a pickle
-    name = conf['Neuron']['name']
-    mode = conf['Autapse']['mode']
-    file_sign = conf['STA']['outfile']
-    filepath = f"{name}//{name}_{mode}_{file_sign}"
-    with open(filepath, 'wb') as file:
-        pickle.dump(STA_dict, file)
+        #STA_dict[f] = neuron_dict
+
+        # save the results dict as a pickle
+        # one file for each frequency to avoid memory errors
+        name = conf['Neuron']['name']
+        mode = conf['Autapse']['mode']
+        file_sign = conf['STA']['outfile']  # includes the .pickle ending
+        filepath = f"{name}_{mode}//{name}_{mode}_{f}{file_sign}"
+        with open(filepath, 'wb') as file:
+            pickle.dump(STA_dict, file)
+        
+    # delete variables at the end of each loop to free up memory
+    del neuron_dict
+    del I_noise
+    del I_inj
+    del sta
+    del spikes
+    gc.collect()
 
