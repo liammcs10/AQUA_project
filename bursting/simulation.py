@@ -400,7 +400,7 @@ def calculate_STA(params, conf):
     autapse_currents = batch_thresh.get_net_autapse_currents()
     autapse_delays = batch_thresh.get_mean_autapse_delays()
 
-    STA_dict = {}
+    #STA_dict = {}
     # Loop over each frequency for memory reasons
     for f in filter_freq:
         print(f"freq: {f}")
@@ -447,7 +447,7 @@ def calculate_STA(params, conf):
             sta[idx_start:idx_end] = STA(spikes, I_inj[idx_start:idx_end], dt, window = window)
         
         # average the STA for each neuron and store in a dict with the neuron's parameters
-        STA_dict = {}
+        STA_dict = {}      # the dictionary to store all neuron data for this frequency
         for i in range(N_neurons):
             sta_mean = np.mean(sta[i::N_neurons], axis = 0)
             neuron_dict = {'e': params.iloc[i]['e'], 
@@ -458,6 +458,7 @@ def calculate_STA(params, conf):
                            'sta': sta_mean}
             STA_dict[i] = neuron_dict
         
+        # append the frequency data
         #STA_dict[f] = neuron_dict
 
         # save the results dict as a pickle
