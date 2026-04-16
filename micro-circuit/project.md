@@ -20,3 +20,12 @@ Several of these mechanisms seem to rely on a few mechanisms:
 
 #### 3 neurons: 2 excitatory, 1 inhibitory
     Putting these 2 smaller systems together, can you force synchrony between the excitatory neurons at a frequency determined by the inhibitory interneuron's autapse?
+
+
+##### Can we play with some 'algorithmic primitives' and see if autapses help with these in some way?
+### Winner-takes-all
+    One example primitive. 'Neural leader election' represents one output neuron as active. 
+    Used in perceptual attention, competitive learning
+### synchronization?
+### Similarity Testing
+    natural sub-problem for pattern recognition.
