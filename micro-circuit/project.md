@@ -27,5 +27,3 @@ Several of these mechanisms seem to rely on a few mechanisms:
     One example primitive. 'Neural leader election' represents one output neuron as active. 
     Used in perceptual attention, competitive learning
 ### synchronization?
-### Similarity Testing
-    natural sub-problem for pattern recognition.
