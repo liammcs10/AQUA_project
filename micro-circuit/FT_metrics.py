@@ -42,7 +42,7 @@ def calculate_FT(binary_spikes, dt, filter = None):
         filter /= filter.sum()    # normalise
 
     # convolve binary spikes
-    freq = convolve(binary_spikes, filter)[:np.shape(binary_spikes)[1]]
+    freq = convolve(binary_spikes, filter)[:np.shape(binary_spikes)[0]]
 
     #calculate FFT
     FFT = np.fft.fft(freq)
@@ -84,21 +84,42 @@ def calculate_FT_diff(FFT1, FFT2, FFT_freq, freq_cutoff = 100):
     sub_FFT2 /= sub_FFT2.sum()
 
     # difference
-    plt.plot(sub_freq, sub_FFT2 - sub_FFT1, c = 'black')
-    plt.plot(sub_freq, np.abs(sub_FFT2 - sub_FFT1), c = 'blue')
-    plt.show()
-
     diff = np.sum(np.abs(sub_FFT2 - sub_FFT1))
 
     return diff
 
-def rolling_FT_diff(binary_spikes, dt, filter, window):
+def rolling_FT_diff(binary_spikes1, binary_spikes2, dt, window, filter = None, freq_cutoff = 100):
     '''
     Calculate the rolling Fourier Transform difference to measure how synchrony
     converges over time.
 
-    
-    
     '''
+
+    assert len(binary_spikes1) == len(binary_spikes2), "Both time series must be the same length"
+
+    # if no filter given
+    if filter is None:
+        # if no filter, use a gaussian
+        filter = windows.gaussian(M = 10000, std = 100)
+        filter /= filter.sum()    # normalise
+
+    T = np.shape(binary_spikes1)[0]      # length of time series
+
+    rolling_FT = np.zeros(T - window)   # output rolling distance
+
+    for t in range(T - window):
+        
+        fft1, fft1_freq = calculate_FT(binary_spikes1[t:t+window], dt, filter)
+        fft2, fft2_freq = calculate_FT(binary_spikes2[t:t+window], dt, filter)
+
+        # calc. diff
+        diff = calculate_FT_diff(fft1, fft2, fft1_freq, freq_cutoff)
+
+        # add to output
+        rolling_FT[t] = diff
+
+    return rolling_FT
+
+
 
 
