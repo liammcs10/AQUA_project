@@ -122,6 +122,44 @@ def compare_trains(X1, X2, T, I, indices = []):
     return fig, ax
 
 
+def plot_raster(spike_array, total_time, ax=None, **kwargs):
+    """
+    Plots a raster plot onto a given or new axes object.
+    
+    Parameters:
+    - spike_array: 2D numpy array (neurons x time_steps)
+    - dt: Timestep of the simulation
+    - total_time: Total duration
+    - ax: (Optional) Existing matplotlib axes object
+    - **kwargs: Pass-through arguments for line styling (e.g., color, linewidth)
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+    else:
+        fig = ax.get_figure()
+
+    num_trains = spike_array.shape[0]
+    
+    # Set default styles but allow override via kwargs
+    color = kwargs.get('color', 'black')
+    linewidth = kwargs.get('linewidth', 1.5)
+
+    for i in range(num_trains):
+        spike_indices = np.where(spike_array[i, :] > 0)[0]
+        spike_times = spike_array[i, spike_indices]
+        
+        # Plotting the spikes
+        ax.vlines(spike_times, i, i + 0.8, color=color, linewidth=linewidth)
+
+    ax.set_xlim(0, total_time)
+    ax.set_ylim(-0.5, num_trains)
+    ax.set_xlabel("Time (ms)")
+    ax.set_ylabel("Neuron Index")
+    
+    return fig, ax
+
+
+
 def plot_3D(X, split):
     # Plots a 2x2 figure with a 3D phase plot, and 3 2D projections.
     fig = plt.figure(figsize = (10, 10))
