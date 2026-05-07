@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pyspike as spk
 import pickle
+import gc
+import tracemalloc
 from scipy.signal import convolve, windows
 
 from FT_metrics import *
@@ -96,7 +98,30 @@ def visualise_connectivity(S):
     plt.ylabel('Target neuron index')
     plt.show()
 
+
 def main():
+
+    # DRIVING CURRENTS
+    INPUT_E1 = np.linspace(120, 280, 20)# 15
+    INPUT_E2 = 150
+
+    # SYNAPSE STRENGTH
+    E1_TO_E2 = np.linspace(20, 100, 10)# 10   
+    E2_TO_E1 = np.linspace(20, 100, 10)# 10
+
+
+    # simulate the autaptic network
+    simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, "synch_analysis_aut.pickle")
+
+    # simulate the non-autaptic network
+    simulate(E2_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, "synch_analysis_naut.pickle")
+
+
+
+
+
+
+def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, outfile):
     """
     Quick analysis over parameters to see if the autapse extends the range of synchrony.
 
@@ -108,19 +133,12 @@ def main():
     CAN PROBABLY RUN EVERYTHING IN ONE GO AND USE GPU OPTIMIZATION THIS WAY TOO!
     
     """
+    start_scope()
+    tracemalloc.start()
+    snap1 = tracemalloc.take_snapshot()
 
     ### Store the simulation parameters below. 
-
-    # DRIVING CURRENTS
-    INPUT_E1 = np.linspace(120, 280, 14)
-    INPUT_E2 = 150
-
-    # SYNAPSE STRENGTH
-    E1_TO_E2 = np.linspace(20, 100, 10)   
-    E2_TO_E1 = np.linspace(20, 100, 10)
-
     N_SIMS = len(INPUT_E1) * len(E1_TO_E2) * len(E2_TO_E1)
-
 
     #  INHIBITORY PARAMETERS
     THRESHOLD_OFFSET = 0
@@ -135,7 +153,7 @@ def main():
     ''' - - - define the excitatory populations - - - '''
     # neuron parameters, 2 populations for each neuron...
     params_E1 = [E1_neuron for _ in range(N_SIMS)]      # 2 neurons
-    params_E2 = [E2_neuron for _ in range(N_SIMS)]
+    params_E2 = [E2_neuron for _ in range(N_SIMS)]      # 2 neurons
 
 
     x_start = np.full(shape = (N_SIMS, 3), fill_value = np.array([-60, 0, 0]))
@@ -162,12 +180,8 @@ def main():
     I2_TA = TimedArray(values = I2.T, dt = dt*ms, name = 'I2_TA')
 
     # convert to brian2 with the standard autapse model
-    E1_aut, aut_E1 = batch_E1.meetBrian(stimulus_name = I1_TA, synapse_eq = syn_eq)
-    E2_aut, aut_E2 = batch_E2.meetBrian(stimulus_name = I2_TA, synapse_eq = syn_eq)
-    
-    # create the non-autaptic version of the network
-    E1_naut, naut_E1 = batch_E1.meetBrian(stimulus_name = I1_TA, synapse_eq = syn_eq)
-    E2_naut, naut_E2 = batch_E2.meetBrian(stimulus_name = I2_TA, synapse_eq = syn_eq)
+    E1, aut_E1 = batch_E1.meetBrian(stimulus_name = I1_TA, synapse_eq = syn_eq)
+    E2, aut_E2 = batch_E2.meetBrian(stimulus_name = I2_TA, synapse_eq = syn_eq)
 
 
     ''' - - - define the inhibitory neuron - - - '''
@@ -185,8 +199,7 @@ def main():
     I_inhTA = TimedArray(values = I_inh.T, dt = dt*ms, name = 'I_inhTA')
 
     # create brian objects, no effective autapse here.
-    I_aut, aut_I = batch_I.meetBrian(stimulus_name = I_inhTA, synapse_eq = syn_eq)
-    I_naut, naut_I = batch_I.meetBrian(stimulus_name = I_inhTA, synapse_eq = syn_eq)
+    I, aut_I = batch_I.meetBrian(stimulus_name = I_inhTA, synapse_eq = syn_eq)
 
     ''' - - - CREATE SYNAPSES - - - '''
     """ - - STDP - - """
@@ -195,147 +208,84 @@ def main():
     dApre = 20      # the maximum change in the weight in one step
     dApost = -dApre * (taupre/taupost) * 1.05
 
-    '''- - exc. (aut) synapses - -'''
+    '''- - exc. synapses - -'''
     # fully connect excitatory neurons (ignoring autapses)
-    syn_E1_aut = Synapses(E1_aut, E2_aut, 
+    syn_E1 = Synapses(E1, E2, 
                 model = model_exc,
                 on_pre = syn_on_pre_exc,
                 method = 'rk2')
-    syn_E2_aut = Synapses(E2_aut, E1_aut, 
+    syn_E2 = Synapses(E2, E1, 
                 model = model_exc,
                 on_pre = syn_on_pre_exc,
                 method = 'rk2')
     
-    syn_E1_aut.connect(condition = 'i == j')     # fully connected minus autapses
-    syn_E2_aut.connect(condition = 'i == j')     # fully connected minus autapses
+    syn_E1.connect(condition = 'i == j')     # 1-1 connection
+    syn_E2.connect(condition = 'i == j')     # 1-1 connection
 
     ## Set exc. synapse variables here...
-    E1_aut.Syn_exc = 0            # pA
-    E2_aut.Syn_exc = 0            # pA
-    E1_aut.t_exc = 5              # ms
-    E2_aut.t_exc = 5              # ms
-    I_aut.t_exc = 5               # ms
-    I_naut.t_exc = 5              # ms
+    E1.Syn_exc = 0            # pA
+    E2.Syn_exc = 0            # pA
+    E1.t_exc = 5              # ms
+    E2.t_exc = 5              # ms
+    I.t_exc = 5               # ms
 
-    E1_aut.t_inh = 5              # ms
-    E2_aut.t_inh = 5              # ms
-    I_aut.t_inh = 5               # ms
-    I_naut.t_inh = 5              # ms
+    E1.t_inh = 5              # ms
+    E2.t_inh = 5              # ms
+    I.t_inh = 5               # ms
 
-    for n in range(N_SIMS):
-        for w1 in E1_TO_E2:
-            for w2 in E2_TO_E1:
-                syn_E1_aut.w_exc[n, n] = w1    # pA, weight from E1 -> E2
-                syn_E2_aut.w_exc[n, n] = w2    # pA, weight from E2 -> E1
 
-    '''- - exc. (naut) synapses - - '''
-    # fully connect excitatory neurons (ignoring autapses)
-    syn_E1_naut = Synapses(E1_naut, E2_naut, 
-                model = model_exc,
-                on_pre = syn_on_pre_exc,
-                method = 'rk2')
-    syn_E2_naut = Synapses(E2_naut, E1_naut, 
-                model = model_exc,
-                on_pre = syn_on_pre_exc,
-                method = 'rk2')
-    
-    syn_E1_naut.connect(condition = 'i == j')     # fully connected minus autapses
-    syn_E2_naut.connect(condition = 'i == j')     # fully connected minus autapses
+    N_w = len(E1_TO_E2) * len(E2_TO_E1)
+    N_e1 = len(E1_TO_E2)
+    for l in range(len(INPUT_E1)):
+        for m, w1 in enumerate(E1_TO_E2):
+            for n, w2 in enumerate(E2_TO_E1):
+                idx = l * N_w + m * N_e1 + n
+                syn_E1.w_exc[idx, idx] = w1    # pA, weight from E1 -> E2
+                syn_E2.w_exc[idx, idx] = w2    # pA, weight from E2 -> E1
 
-    ## Set exc. synapse variables here...
-    E1_naut.Syn_exc = 0            # pA
-    E2_naut.Syn_exc = 0            # pA
-    E1_naut.t_exc = 5              # ms
-    E2_naut.t_exc = 5              # ms
 
-    E1_naut.t_inh = 5              # ms
-    E2_naut.t_inh = 5              # ms
-
-    for n in range(N_SIMS):
-        for w1 in E1_TO_E2:
-            for w2 in E2_TO_E1:
-                syn_E1_naut.w_exc[n, n] = w1    # pA, weight from E1 -> E2
-                syn_E2_naut.w_exc[n, n] = w2    # pA, weight from E2 -> E1
-
-    ''' - - E1 and E2 to I synapses (aut.) - - '''
-    syn_E1_I_aut = Synapses(E1_aut, I_aut,
+    ''' - - E1 and E2 to I synapses - - '''
+    syn_E1_I = Synapses(E1, I,
                 model = model_stdp,
                 on_pre = on_pre_stdp_exc,
                 on_post = on_post_stdp,
                 method = 'rk2')
-    syn_E1_I_aut.connect(condition = 'i == j')         # both excitatory neurons connect to I
+    syn_E1_I.connect(condition = 'i == j')         # both excitatory neurons connect to I
 
-    syn_E2_I_aut = Synapses(E2_aut, I_aut,
+    syn_E2_I = Synapses(E2, I,
                 model = model_stdp,
                 on_pre = on_pre_stdp_exc,
                 on_post = on_post_stdp,
                 method = 'rk2')
-    syn_E2_I_aut.connect(condition = 'i == j')         # both excitatory neurons connect to I
+    syn_E2_I.connect(condition = 'i == j')         # both excitatory neurons connect to I
 
     ## set inh. synapse variables for post-syn population
-    syn_E2_I_aut.w_exc[:, :] = 50   # pA, weight from I -> E1
-    syn_E2_I_aut.w_exc[:, :] = 50   # pA, weight from I -> E2
+    syn_E2_I.w_exc[:, :] = 50   # pA, weight from I -> E1
+    syn_E2_I.w_exc[:, :] = 50   # pA, weight from I -> E2
 
-    ''' - - E1 and E2 to I synapses (Naut.) - - '''
-    syn_E1_I_naut = Synapses(E1_naut, I_naut,
+
+    ''' - - I to E1 and E2 synapses - - '''
+    syn_I_E1 = Synapses(I, E1,
                 model = model_stdp,
                 on_pre = on_pre_stdp_exc,
                 on_post = on_post_stdp,
                 method = 'rk2')
-    syn_E1_I_naut.connect(condition = 'i == j')         # both excitatory neurons connect to I
+    syn_I_E1.connect(condition = 'i == j')         # both excitatory neurons connect to I
 
-    syn_E2_I_naut = Synapses(E2_naut, I_naut,
+    syn_I_E2 = Synapses(I, E2,
                 model = model_stdp,
                 on_pre = on_pre_stdp_exc,
                 on_post = on_post_stdp,
                 method = 'rk2')
-    syn_E2_I_naut.connect(condition = 'i == j')         # both excitatory neurons connect to I
+    syn_I_E2.connect(condition = 'i == j')         # both excitatory neurons connect to I
 
     ## set inh. synapse variables for post-syn population
-    syn_E2_I_naut.w_exc[:, :] = 50   # pA, weight from I -> E1
-    syn_E2_I_naut.w_exc[:, :] = 50   # pA, weight from I -> E2
+    syn_I_E2.w_exc[:, :] = 50   # pA, weight from I -> E1
+    syn_I_E2.w_exc[:, :] = 50   # pA, weight from I -> E2
 
-
-    ''' - - I to E1 and E2 synapses (aut.) - - '''
-    syn_I_E1_aut = Synapses(I_aut, E1_aut,
-                model = model_stdp,
-                on_pre = on_pre_stdp_exc,
-                on_post = on_post_stdp,
-                method = 'rk2')
-    syn_I_E1_aut.connect(condition = 'i == j')         # both excitatory neurons connect to I
-
-    syn_I_E2_aut = Synapses(I_aut, E2_aut,
-                model = model_stdp,
-                on_pre = on_pre_stdp_exc,
-                on_post = on_post_stdp,
-                method = 'rk2')
-    syn_I_E2_aut.connect(condition = 'i == j')         # both excitatory neurons connect to I
-
-    ## set inh. synapse variables for post-syn population
-    syn_I_E2_aut.w_exc[:, :] = 50   # pA, weight from I -> E1
-    syn_I_E2_aut.w_exc[:, :] = 50   # pA, weight from I -> E2
-
-
-    ''' - - I to E1 and E2 synapses (Naut.) - - '''
-    syn_I_E1_naut = Synapses(I_naut, E1_naut,
-                model = model_stdp,
-                on_pre = on_pre_stdp_exc,
-                on_post = on_post_stdp,
-                method = 'rk2')
-    syn_I_E1_naut.connect(condition = 'i == j')         # both excitatory neurons connect to I
-
-    syn_I_E2_naut = Synapses(I_naut, E2_naut,
-                model = model_stdp,
-                on_pre = on_pre_stdp_exc,
-                on_post = on_post_stdp,
-                method = 'rk2')
-    syn_I_E2_naut.connect(condition = 'i == j')         # both excitatory neurons connect to I
-
-    ## set inh. synapse variables for post-syn population
-    syn_I_E2_naut.w_exc[:, :] = 50   # pA, weight from I -> E1
-    syn_I_E2_naut.w_exc[:, :] = 50   # pA, weight from I -> E2
-
-
+    snap2 = tracemalloc.take_snapshot()
+    stats = snap2.compare_to(snap1, 'lineno')
+    print(f'Before Network Creation: {stats[0].size_diff / 10**6:.2f} MB')
 
     ''' - - simulation - - '''
     # set simulation parameters
@@ -343,20 +293,13 @@ def main():
     # Monitors
 
     # Monitors for the autaptic network
-    M_v_E1_aut = StateMonitor(E1_aut, ['v', 'Syn_exc', 'Syn_inh', 'w'], record = True)
-    M_v_E2_aut = StateMonitor(E2_aut, ['v', 'Syn_exc', 'Syn_inh', 'w'], record = True)
-    M_v_I_aut = StateMonitor(I_aut, ['v', 'Syn_exc', 'Syn_inh'], record = True)
-    spikemon_E1_aut = SpikeMonitor(E1_aut, record = True)
-    spikemon_E2_aut = SpikeMonitor(E2_aut, record = True)
-    spikemon_I_aut = SpikeMonitor(I_aut, record = True)
+    M_v_E1 = StateMonitor(E1, ['v', 'Syn_exc', 'Syn_inh', 'w'], record = True)
+    M_v_E2 = StateMonitor(E2, ['v', 'Syn_exc', 'Syn_inh', 'w'], record = True)
+    M_v_I = StateMonitor(I, ['v', 'Syn_exc', 'Syn_inh'], record = True)
+    spikemon_E1 = SpikeMonitor(E1, record = True)
+    spikemon_E2 = SpikeMonitor(E2, record = True)
+    spikemon_I = SpikeMonitor(I, record = True)
 
-    # Monitors for the NON-autaptic network
-    M_v_E1_naut = StateMonitor(E1_naut, ['v', 'Syn_exc', 'Syn_inh', 'w'], record = True)
-    M_v_E2_naut = StateMonitor(E2_naut, ['v', 'Syn_exc', 'Syn_inh', 'w'], record = True)
-    M_v_I_naut = StateMonitor(I_naut, ['v', 'Syn_exc', 'Syn_inh'], record = True)
-    spikemon_E1_naut = SpikeMonitor(E1_naut, record = True)
-    spikemon_E2_naut = SpikeMonitor(E2_naut, record = True)
-    spikemon_I_naut = SpikeMonitor(I_naut, record = True)
     
     # M_syn_EI_aut = StateMonitor(syn_EI, 'w_exc', record = True)
     # M_syn_IE_aut = StateMonitor(syn_IE, 'w_inh', record = True)
@@ -365,61 +308,48 @@ def main():
     # M_syn_EI = StateMonitor(syn_EI, 'Syn_exc', record = True)   
 
     # create networks
-    net_aut = Network(E1_aut, E2_aut, I_aut, aut_E1, aut_E2, aut_I, syn_E1_aut, syn_E2_aut, syn_E1_I_aut, syn_I_E1_aut, syn_E2_I_aut, syn_I_E2_aut, 
-                    M_v_E1_aut, M_v_E2_aut, M_v_I_aut, spikemon_E1_aut, spikemon_E2_aut, spikemon_I_aut) 
+    net = Network(E1, E2, I, aut_E1, aut_E2, aut_I, syn_E1, syn_E2, syn_E1_I, syn_I_E1, syn_E2_I, syn_I_E2, 
+                    M_v_E1, M_v_E2, M_v_I, spikemon_E1, spikemon_E2, spikemon_I) 
     
-    net_naut = Network(E1_naut, E2_naut, I_naut, naut_E1, naut_E2, naut_I, syn_E1_naut, syn_E2_naut, syn_E1_I_naut, syn_I_E1_naut, syn_E2_I_naut, syn_I_E2_naut, 
-                    M_v_E1_naut, M_v_E2_naut, M_v_I_naut, spikemon_E1_naut, spikemon_E2_naut, spikemon_I_naut) 
-
-    net_aut.run(T*ms)
-
-    net_naut.run(T*ms)
+    snap2 = tracemalloc.take_snapshot()
+    stats = snap2.compare_to(snap1, 'lineno')
+    print(f'Before Simulation: {stats[0].size_diff / 10**6:.2f} MB')
+    net.run(T*ms)
+    snap2 = tracemalloc.take_snapshot()
+    stats = snap2.compare_to(snap1, 'lineno')
+    print(f'After Simulation: {stats[0].size_diff / 10**6:.2f} MB')
 
     ''' - - - CALCULATE METRICS - - - '''
 
-    cols = ['I_inj', 'w_e1_e2', 'w_e2_e1', 'ft_distance', 'ISI_distance', 'SPIKE_distance', 'SPIKE_synchrony', 'spike_directionality']
-    results_aut = pd.DataFrame(columns = cols)
-    results_naut = pd.DataFrame(columns = cols)
+    cols = ['I_inj', 'w_e1_e2', 'w_e2_e1', 'FT_distance', 'ISI_distance', 'SPIKE_distance', 'SPIKE_synchrony', 'spike_directionality']
+    results = pd.DataFrame(columns = cols)
 
     # set values from the simulation
-    results_aut['I_inj'] = I1[:, 0]                   # Current into E1
-    results_naut['I_Inj'] = I1[:, 0]   
-
-    results_aut['w_e1_e2'] = syn_E1_aut.w_exc[:]         # Synapse weight from e1 to e2
-    results_naut['w_e1_e2'] = syn_E1_naut.w_exc[:]
-
-    results_aut['w_e2_e1'] = syn_E2_aut.w_exc[:]         # Synapse weight from e2 to e1
-    results_naut['w_e2_e1'] = syn_E2_naut.w_exc[:]
+    results['I_inj'] = I1[:, 0]                   # Current into E1
+    results['w_e1_e2'] = syn_E1.w_exc[:]         # Synapse weight from e1 to e2
+    results['w_e2_e1'] = syn_E2.w_exc[:]         # Synapse weight from e2 to e1
 
 
-    visualise_connectivity(syn_E1_I_naut)
+    #visualise_connectivity(syn_E1_I_naut)
 
-    visualise_connectivity(syn_I_E2_naut)
+    #visualise_connectivity(syn_I_E2_naut)
 
     ## Get spike trains
-    spike_train_E1_aut = spikemon_E1_aut.spike_trains()
-    spike_train_E2_aut = spikemon_E2_aut.spike_trains()
-    #spike_train_I_aut = spikemon_I_aut.spike_trains()
+    spike_train_E1 = spikemon_E1.spike_trains()
+    spike_train_E2 = spikemon_E2.spike_trains()
+    #spike_train_I = spikemon_I_aut.spike_trains()
 
-    spike_train_E1_naut = spikemon_E1_naut.spike_trains()
-    spike_train_E2_naut = spikemon_E2_naut.spike_trains()
-    #spike_train_I_naut = spikemon_I_naut.spike_trains()
 
     # convert to aqua spikes
-    spikes_E1_aut = convert_spikes_to_aqua(spike_train_E1_aut)
-    spikes_E2_aut = convert_spikes_to_aqua(spike_train_E2_aut)
-    #spikes_I_aut = convert_spikes_to_aqua(spike_train_I_aut)
+    spikes_E1 = convert_spikes_to_aqua(spike_train_E1)
+    spikes_E2 = convert_spikes_to_aqua(spike_train_E2)
+    #spikes_I = convert_spikes_to_aqua(spike_train_I)
 
-    spikes_E1_naut = convert_spikes_to_aqua(spike_train_E1_naut)
-    spikes_E2_naut = convert_spikes_to_aqua(spike_train_E2_naut)
-    #spikes_I_naut = convert_spikes_to_aqua(spike_train_I_naut)
+
 
     ''' - - FT metric - - '''
-    bin_E1_aut = binarise_spikes(spikes_E1_aut, dt, N_iter)
-    bin_E2_aut = binarise_spikes(spikes_E2_aut, dt, N_iter)
-
-    bin_E1_naut = binarise_spikes(spikes_E1_naut, dt, N_iter)
-    bin_E2_naut = binarise_spikes(spikes_E2_naut, dt, N_iter)
+    bin_E1 = binarise_spikes(spikes_E1, dt, N_iter)
+    bin_E2 = binarise_spikes(spikes_E2, dt, N_iter)
 
     # filter - can vary the std for different measures
     gauss = windows.gaussian(M = 10000, std = 100)
@@ -428,75 +358,60 @@ def main():
     edges = [0, T]     # edges for pyspike
 
     # store the metrics
-    FT_dist_aut = np.zeros(N_SIMS)
-    ISI_dist_aut = np.zeros(N_SIMS)
-    SPIKE_dist_aut = np.zeros(N_SIMS)
-    SPIKE_synch_aut = np.zeros(N_SIMS)
-    spike_directionality_aut = np.zeros(N_SIMS)
-
-    FT_dist_naut = np.zeros(N_SIMS)
-    ISI_dist_naut = np.zeros(N_SIMS)
-    SPIKE_dist_naut = np.zeros(N_SIMS)
-    SPIKE_synch_naut = np.zeros(N_SIMS)
-    spike_directionality_naut = np.zeros(N_SIMS)
+    FT_dist = np.zeros(N_SIMS)
+    ISI_dist = np.zeros(N_SIMS)
+    SPIKE_dist = np.zeros(N_SIMS)
+    SPIKE_synch = np.zeros(N_SIMS)
+    spike_directionality = np.zeros(N_SIMS)
 
     for i in range(N_SIMS):
 
         '''FT distance'''
         # calculate FFT
-        _, freq = calculate_FT(bin_E1_aut[0, :], dt, gauss)
-        fft_E1_aut = calculate_FT(bin_E1_aut[i, :], dt, gauss)[0]
-        fft_E2_aut = calculate_FT(bin_E2_aut[i, :], dt, gauss)[0]
+        _, freq = calculate_FT(bin_E1[0, :], dt, gauss)
+        fft_E1, _ = calculate_FT(bin_E1[i, :], dt, gauss)
+        fft_E2, _ = calculate_FT(bin_E2[i, :], dt, gauss)
 
-        fft_E1_naut = calculate_FT(bin_E1_naut[i, :], dt, gauss)[0]
-        fft_E2_naut = calculate_FT(bin_E2_naut[i, :], dt, gauss)[0]
-
-        FT_dist_aut[i] = calculate_FT_diff(fft_E1_aut, fft_E2_aut, freq)
-        FT_dist_naut[i] = calculate_FT_diff(fft_E1_naut, fft_E2_naut, freq)
+        FT_dist[i] = calculate_FT_diff(fft_E1, fft_E2, freq)
 
         '''- - PYSPIKE metrics - - '''
         # create pyspike spike_trains
-        spk_E1_aut = spk.SpikeTrain(spikes_E1_aut, edges)
-        spk_E2_aut = spk.SpikeTrain(spikes_E2_aut, edges)
-
-        spk_E1_naut = spk.SpikeTrain(spikes_E1_naut, edges)
-        spk_E2_naut = spk.SpikeTrain(spikes_E2_naut, edges)
+        spk_E1 = spk.SpikeTrain(spikes_E1[i, :], edges)
+        spk_E2 = spk.SpikeTrain(spikes_E2[i, :], edges)
 
         '''- - ISI distance - -'''
-        ISI_dist_aut[i] = spk.isi_profile(spk_E1_aut, spk_E2_aut).avrg()
-        ISI_dist_naut[i] = spk.isi_profile(spk_E1_naut, spk_E2_naut).avrg()
+        ISI_dist[i] = spk.isi_profile(spk_E1, spk_E2).avrg()
 
         '''- - SPIKE distance - -'''
-        SPIKE_dist_aut[i] = spk.spike_profile(spk_E1_aut, spk_E2_aut).avrg()
-        SPIKE_dist_naut[i] = spk.spike_profile(spk_E1_naut, spk_E2_naut).avrg()
+        SPIKE_dist[i] = spk.spike_profile(spk_E1, spk_E2).avrg()
 
         '''- - SPIKE synchrony - -'''
-        SPIKE_synch_aut[i] = spk.spike_sync_profile(spk_E1_aut, spk_E2_aut).avrg()
-        SPIKE_synch_naut[i] = spk.spike_sync_profile(spk_E1_naut, spk_E2_naut).avrg()
+        SPIKE_synch[i] = spk.spike_sync_profile(spk_E1, spk_E2).avrg()
 
         '''- - SPIKE directionality - -'''
-        spike_directionality_aut[i] = spk.spike_sync_profile(spk_E1_aut, spk_E2_aut).avrg()
-        spike_directionality_naut[i] = spk.spike_sync_profile(spk_E1_naut, spk_E2_naut).avrg()
+        spike_directionality[i] = spk.spike_directionality(spk_E1, spk_E2)
 
     # append to dataframes
-    results_aut['FT_distance'] = FT_dist_aut 
-    results_aut['ISI_distance'] = ISI_dist_aut 
-    results_aut['SPIKE_distance'] = SPIKE_dist_aut 
-    results_aut['SPIKE_synchrony'] = SPIKE_synch_aut 
-    results_aut['spike directionality'] = spike_directionality_aut
-
-    results_naut['FT_distance'] = FT_dist_naut 
-    results_naut['ISI_distance'] = ISI_dist_naut 
-    results_naut['SPIKE_distance'] = SPIKE_dist_naut 
-    results_naut['SPIKE_synchrony'] = SPIKE_synch_naut 
-    results_naut['spike directionality'] = spike_directionality_naut
+    results['FT_distance'] = FT_dist
+    results['ISI_distance'] = ISI_dist
+    results['SPIKE_distance'] = SPIKE_dist
+    results['SPIKE_synchrony'] = SPIKE_synch
+    results['spike_directionality'] = spike_directionality
 
 
-    with open("synch_analysis_aut.pickle", 'wb') as file:
-        pickle.dump(results_aut, file)
 
-    with open("synch_analysis_naut.pickle", 'wb') as file:
-        pickle.dump(results_naut, file)
+    with open(outfile, 'wb') as file:
+        pickle.dump(results, file)
+
+    snap2 = tracemalloc.take_snapshot()
+    stats = snap2.compare_to(snap1, 'lineno')
+    print(f'Before Deletion: {stats[0].size_diff / 10**6:.2f} MB')
+    gc.collect()
+    snap2 = tracemalloc.take_snapshot()
+    stats = snap2.compare_to(snap1, 'lineno')
+    print(f'After Deletion: {stats[0].size_diff / 10**6:.2f} MB')
+
+
     
 
 if __name__ == "__main__":
