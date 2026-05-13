@@ -43,6 +43,27 @@ def binarise_spikes(spikes, dt, N_iter):
 
     return spike_train
 
+def get_ISI_time_series(spikes, N_iter, dt):
+    '''
+    Returns a time series in which each point represents the ISI between
+    the closest spikes to that point in time. 
+    '''
+    # create an ISI plot....
+    ISI_trace = np.zeros((len(spikes), N_iter))
+    ISIs = np.diff(spikes, axis = 1)
+
+    for n, row in enumerate(spikes):
+        for i in range(len(row[~np.isnan(row)])-1):
+
+            idx_1 = int(row[i]/dt)
+            idx_2 = int(row[i+1]/dt)
+            ISI_trace[n, idx_1:idx_2] = ISIs[n, i]
+
+    return ISI_trace
+
+
+
+
 
 def pad_list(lst, pad_value=np.nan, pad_end = True):
     max_length = max(len(sublist) for sublist in lst)
