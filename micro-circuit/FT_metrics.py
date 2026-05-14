@@ -10,7 +10,7 @@ from brian2 import *
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from scipy.signal import convolve, windows
+from scipy.signal import convolve, windows, find_peaks
 
 
 
@@ -121,5 +121,33 @@ def rolling_FT_diff(binary_spikes1, binary_spikes2, dt, window, filter = None, f
     return rolling_FT
 
 
-
+def get_top_fft_peaks(fft_values, fft_freqs, min_freq=0, num_peaks=1):
+    """
+    Identifies the top N peak frequencies and magnitudes as separate arrays.
+    
+    Returns:
+    - peak_freqs: np.array of frequencies
+    - peak_heights: np.array of magnitudes
+    """
+    
+    # 1. Mask positive frequencies
+    positive_mask = fft_freqs >= min_freq
+    freqs_filtered = fft_freqs[positive_mask]
+    magnitudes = np.abs(fft_values[positive_mask])
+    
+    # 2. Find local maxima
+    peak_indices, _ = find_peaks(magnitudes)
+    
+    found_freqs = freqs_filtered[peak_indices]
+    found_heights = magnitudes[peak_indices]
+    
+    # 3. Sort and slice
+    sorted_indices = np.argsort(found_heights)[::-1]
+    top_indices = sorted_indices[:num_peaks]
+    
+    # 4. Convert to separate NumPy arrays
+    peak_freqs = found_freqs[top_indices]
+    peak_heights = found_heights[top_indices]
+    
+    return peak_freqs, peak_heights
 
