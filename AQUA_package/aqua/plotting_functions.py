@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d.axes3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 
-def plot_ISI_dist(spikes, bins = 50, fig = None, ax = None):
+def plot_ISI_dist(spikes, bins = 50, range = (0, 300), fig = None, ax = None):
     """
     Plots the ISI distribution from the spike time data.
 
@@ -22,7 +22,7 @@ def plot_ISI_dist(spikes, bins = 50, fig = None, ax = None):
 
     ISI = np.ediff1d(spikes)
 
-    ax.hist(ISI, bins)
+    ax.hist(ISI, bins, range)
 
     ax.set_xlabel("Interspike Interval (ISI) [ms]")
     ax.set_ylabel("Counts")
@@ -147,6 +147,7 @@ def plot_raster(spike_array, total_time, ax=None, **kwargs):
     for i in range(num_trains):
         spike_indices = np.where(spike_array[i, :] > 0)[0]
         spike_times = spike_array[i, spike_indices]
+        print(spike_times)
         
         # Plotting the spikes
         ax.vlines(spike_times, i, i + 0.8, color=color, linewidth=linewidth)

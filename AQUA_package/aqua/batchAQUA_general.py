@@ -226,7 +226,7 @@ class batchAQUA:
         
         Creation of the NeuronGroup and variables should be done outside this function...
     """
-    def meetBrian(self, stimulus_name, synapse_eq = None, biexponential = False, t_a1 = 1., t_a2 = 5.):
+    def meetBrian(self, stimulus_name, synapse_eq = None, autapse_type = 'standard', t_a1 = None, t_a2 = None, I_peak = None):
         """
             Returns the brian2 version of the AQUA model.
             parameters are pre-initialised aside for I_inj
@@ -234,14 +234,24 @@ class batchAQUA:
             IN:
                 self:               existing batch Object
                 stimulus_name:      name of the TimedArray Object which will store the input current to this batch of neurons.
-                biexponential:      whether to use the biexponential autapse model
+                autapse_type:       decides which autapse model to use ('standard', 'biexponential', 'uniform')
                 t_a1, t_a2;         if biexponential, time constants for the model.
+                                    if uniform, start and stop times of step current, respectively.
+                I_peak              if biexponential, peak current of the autapse
+                                    if uniform, height of the step
 
             OUT:
                 G:          brian2 NeuronGroup
                 autapses:   brian2 Synapses
 
         """
+        autapse_type = autapse_type.lower()
+        assert autapse_type in ['standard', 'biexponential', 'uniform'], f"{autapse_type} is not a supported autapse model."
+
+        if (autapse_type in ['biexponential', 'uniform']):
+            if (t_a1 is None) or (t_a1 is None) or (I_peak is None):
+                print("Must pass values for t_a1, t_a1, I_peak when non-standard autapse models are used")
+                quit()
 
         if synapse_eq == None:      # separate from the autapse equation
             print("NO SYNAPSE EQUATION")
@@ -250,6 +260,7 @@ class batchAQUA:
         t_syn : 1
         g_total = I_syn : 1
         """
+        
 
         # separate neuron equation for FS
         if np.all(self.isFS == 1):
@@ -266,17 +277,23 @@ class batchAQUA:
             print("Cannot mix FS and non-FS populations!!!")
             return
 
-        if biexponential:   # biexponential autapse
+        if autapse_type == 'standard':      # exponential decay autapse
+            dw = '''
+        dw/dt = (-e_a*w)/ms : 1
+        e_a : 1
+        '''
+        if autapse_type == 'biexponential':   # biexponential autapse
             dw = '''
         dw/dt = ((t_a2 / t_a1) ** (t_a1 / (t_a2 - t_a1))*x-w)/t_a1/ms : 1
         dx/dt = -x/t_a2/ms : 1
         t_a1 : 1
         t_a2 : 1
+        I_peak : 1
         '''
-        else:   # standard autapse model
+        else:   # uniform autapse current
             dw = '''
-        dw/dt = (-e_a*w)/ms : 1
-        e_a : 1
+            w : 1
+            I_peak : 1
         '''
         variables = '''
         C : 1
@@ -301,15 +318,26 @@ class batchAQUA:
         G = NeuronGroup(self.N_models, EQS, threshold = 'v >= v_peak', reset = RESET, method = 'rk2', namespace = {'stimulus': stimulus_name})
 
 
-        if biexponential:
-            aut_reset = 'x += f'
-        else:
+        if autapse_type == 'standard':
             aut_reset = 'w += f'
+        elif autapse_type == 'biexponential':
+            aut_reset = 'x += I_peak'
+        else:
+            aut_reset = {'start': 'w += I_peak',
+                         'stop': 'w -= I_peak'}
         
         # create autapses
         autapses = Synapses(G, G, on_pre = aut_reset)
         autapses.connect(condition = 'i == j') # self-connections
-        autapses.delay = self.tau*ms
+
+        # split btw biexponential or not
+        if autapse_type == 'standard':
+            autapses.delay = self.tau*ms
+        elif autapse_type == 'biexponential':
+            autapses.delay = self.tau*ms
+        else:       # if uniform autapse
+            autapses.start.delay = t_a1
+            autapses.stop.delay = t_a2
 
         # Intialise conditions
         G.v = self.x[:, 0]
@@ -329,11 +357,14 @@ class batchAQUA:
         G.f = self.f
 
         # split btw biexponential or not
-        if biexponential:
+        if autapse_type == 'standard':
+            G.e_a = self.e
+        elif autapse_type == 'biexponential':
             G.t_a1 = t_a1
             G.t_a2 = t_a2
-        else:
-            G.e_a = self.e
+            G.I_peak = I_peak
+        else:       # if uniform autapse
+            G.I_peak = I_peak
 
 
         return G, autapses
