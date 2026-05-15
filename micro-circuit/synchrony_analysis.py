@@ -116,12 +116,15 @@ def main():
     # simulate the non-autaptic network
     simulate(E2_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, "synch_analysis_naut.pickle")
 
+    # Can now simulate networks with different autapse types.
+    # Also need to decide autapse delivery mode...
 
 
 
 
 
-def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, outfile):
+
+def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, outfile, autapse_type = 'standard', t1 = None, t2 = None, I_peak = None):
     """
     Quick analysis over parameters to see if the autapse extends the range of synchrony.
 
@@ -180,8 +183,8 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
     I2_TA = TimedArray(values = I2.T, dt = dt*ms, name = 'I2_TA')
 
     # convert to brian2 with the standard autapse model
-    E1, aut_E1 = batch_E1.meetBrian(stimulus_name = I1_TA, synapse_eq = syn_eq)
-    E2, aut_E2 = batch_E2.meetBrian(stimulus_name = I2_TA, synapse_eq = syn_eq)
+    E1, aut_E1 = batch_E1.meetBrian(stimulus_name = I1_TA, synapse_eq = syn_eq, autapse_type = autapse_type, t_a1 = t1, t_a2 = t2, I_peak = I_peak)
+    E2, aut_E2 = batch_E2.meetBrian(stimulus_name = I2_TA, synapse_eq = syn_eq)     # no autapse (defaults to standard)
 
 
     ''' - - - define the inhibitory neuron - - - '''
