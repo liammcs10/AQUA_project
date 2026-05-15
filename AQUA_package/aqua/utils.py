@@ -12,7 +12,13 @@ import brian2
 from tqdm import tqdm
 
 
+def convert_to_biexponential_peak(net_current, t1, t2):
+    '''
+    Calculate the peak current through the biexponential autapse model
+    based on the net current through the reference exponential decay autapse.
+    '''
 
+    return (net_current / (t2 - t1)) * ((t1/t2)**(t1/(t2 - t1)) - (t1/t2)**(t2/(t2 - t1)))
 
 def convert_spikes_to_aqua(spike_train):
     """
@@ -60,9 +66,6 @@ def get_ISI_time_series(spikes, N_iter, dt):
             ISI_trace[n, idx_1:idx_2] = ISIs[n, i]
 
     return ISI_trace
-
-
-
 
 
 def pad_list(lst, pad_value=np.nan, pad_end = True):

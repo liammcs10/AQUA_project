@@ -254,7 +254,7 @@ class batchAQUA:
                 quit()
 
         if synapse_eq == None:      # separate from the autapse equation
-            print("NO SYNAPSE EQUATION")
+            print("NO SYNAPSE EQUATION (t_syn = 5)")
             synapse_eq = """
         dI_syn/dt = -(I_syn/t_syn)/ms : 1 
         t_syn : 1
@@ -281,10 +281,11 @@ class batchAQUA:
             dw = '''
         dw/dt = (-e_a*w)/ms : 1
         e_a : 1
+        f :1
         '''
-        if autapse_type == 'biexponential':   # biexponential autapse
+        elif autapse_type == 'biexponential':   # biexponential autapse
             dw = '''
-        dw/dt = ((t_a2 / t_a1) ** (t_a1 / (t_a2 - t_a1))*x-w)/t_a1/ms : 1
+        dw/dt = ((t_a2/t_a1) ** (t_a1/(t_a2 - t_a1))*x-w)/t_a1/ms : 1
         dx/dt = -x/t_a2/ms : 1
         t_a1 : 1
         t_a2 : 1
@@ -305,10 +306,11 @@ class batchAQUA:
         b : 1
         c : 1
         d : 1
-        f : 1
         '''
 
+
         EQS = ODEs + dw + synapse_eq + variables
+        # print(EQS)
 
         RESET = '''
         v = c
@@ -336,8 +338,8 @@ class batchAQUA:
         elif autapse_type == 'biexponential':
             autapses.delay = self.tau*ms
         else:       # if uniform autapse
-            autapses.start.delay = t_a1
-            autapses.stop.delay = t_a2
+            autapses.start.delay = t_a1*ms
+            autapses.stop.delay = t_a2*ms
 
         # Intialise conditions
         G.v = self.x[:, 0]
@@ -354,11 +356,12 @@ class batchAQUA:
         G.b = self.b
         G.c = self.c
         G.d = self.d
-        G.f = self.f
+        G.t_syn = 5
 
-        # split btw biexponential or not
+        # initialise autapse variables
         if autapse_type == 'standard':
             G.e_a = self.e
+            G.f = self.f
         elif autapse_type == 'biexponential':
             G.t_a1 = t_a1
             G.t_a2 = t_a2
