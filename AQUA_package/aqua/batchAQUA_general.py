@@ -226,7 +226,7 @@ class batchAQUA:
         
         Creation of the NeuronGroup and variables should be done outside this function...
     """
-    def meetBrian(self, stimulus_name, synapse_eq = None, autapse_type = 'standard', t_a1 = None, t_a2 = None, I_peak = None):
+    def meetBrian(self, stimulus_name, synapse_eq = None, autapse_type = 'standard', autapse_mode = 'standard', t_a1 = None, t_a2 = None, I_peak = None, p1 = None, p2 = None):
         """
             Returns the brian2 version of the AQUA model.
             parameters are pre-initialised aside for I_inj
@@ -235,22 +235,39 @@ class batchAQUA:
                 self:               existing batch Object
                 stimulus_name:      name of the TimedArray Object which will store the input current to this batch of neurons.
                 autapse_type:       decides which autapse model to use ('standard', 'biexponential', 'uniform')
-                t_a1, t_a2;         if biexponential, time constants for the model.
+                auapse_mode:        mode of autapse delivery
+                                    if 'standard', autapse is released with fixed delay tau
+                                    otherwise, autapse delay sampled from a distribution given by the value of the this variable
+                t_a1, t_a2:         if biexponential, time constants for the model.
                                     if uniform, start and stop times of step current, respectively.
                 I_peak              if biexponential, peak current of the autapse
                                     if uniform, height of the step
+                p1, p2:             Parameters of each non-standard 'autapse_mode' distribution
+                                    if mode = 'poisson' or 'erlang', p1 = decay constant, p2 = k_stages (p2 = 1 for 'poisson')
+                                    if mode = 'normal', p1 = mean, p2 = std
+                                    if mode = 'uniform', p1 = minimum, p2 = maximum.
 
             OUT:
                 G:          brian2 NeuronGroup
                 autapses:   brian2 Synapses
 
         """
+        # check autapse_type
         autapse_type = autapse_type.lower()
         assert autapse_type in ['standard', 'biexponential', 'uniform'], f"{autapse_type} is not a supported autapse model."
 
         if (autapse_type in ['biexponential', 'uniform']):
-            if (t_a1 is None) or (t_a1 is None) or (I_peak is None):
+            if (t_a1 is None) or (t_a2 is None) or (I_peak is None):
                 print("Must pass values for t_a1, t_a1, I_peak when non-standard autapse models are used")
+                quit()
+            
+        # check autapse_mode
+        autapse_mode = autapse_mode.lower()
+        assert autapse_mode in ['standard', 'normal', 'uniform', 'poisson', 'erlang'], f"{autapse_mode} is not a supported autapse delivery mode."
+
+        if autapse_mode != 'standard':
+            if (p1 is None) or (p2 is None):
+                print("Must pass values for p1 and p2 when non-standard autapse delivery modes are used")
                 quit()
 
         if synapse_eq == None:      # separate from the autapse equation
@@ -319,7 +336,8 @@ class batchAQUA:
 
         G = NeuronGroup(self.N_models, EQS, threshold = 'v >= v_peak', reset = RESET, method = 'rk2', namespace = {'stimulus': stimulus_name})
 
-
+        
+        # autapse reset only depends on the autapse_type
         if autapse_type == 'standard':
             aut_reset = 'w += f'
         elif autapse_type == 'biexponential':
@@ -328,18 +346,73 @@ class batchAQUA:
             aut_reset = {'start': 'w += I_peak',
                          'stop': 'w -= I_peak'}
         
-        # create autapses
-        autapses = Synapses(G, G, on_pre = aut_reset)
-        autapses.connect(condition = 'i == j') # self-connections
+        # create autapses - different models for different delay mechanisms (e.g. standard or random from a pre-defined distribution...)
+        if autapse_mode == 'standard':
+            '''If the autapse mode is standard, autapse is delivered with pre-defined delay'''
+            autapses = Synapses(G, G, on_pre = aut_reset)
+            autapses.connect(condition = 'i == j') # self-connections
 
-        # split btw biexponential or not
-        if autapse_type == 'standard':
-            autapses.delay = self.tau*ms
-        elif autapse_type == 'biexponential':
-            autapses.delay = self.tau*ms
-        else:       # if uniform autapse
-            autapses.start.delay = t_a1*ms
-            autapses.stop.delay = t_a2*ms
+            if autapse_type == 'standard':
+                autapses.delay = self.tau*ms
+            elif autapse_type == 'biexponential':
+                autapses.delay = self.tau*ms
+            else:       # if uniform autapse
+                autapses.start.delay = t_a1*ms
+                autapses.stop.delay = t_a2*ms
+        
+        elif autapse_mode == 'poisson': # or autapse_mode == 'erlang':         # the delay is sampled from a poisson distribution
+
+            Gen = NeuronGroup(self.N_models,
+                                     '''
+                                    rate = 1/tau_decay : Hz 
+                                    is_active : boolean
+                                    ''',
+                                    threshold = 'is_active and rand() < rate * dt', 
+                                    reset = 'is_active = False',
+                                    method = 'euler')
+            
+            Gen.is_active = False
+            """
+            if autapse_mode == 'erlang':  # if an erlang distribution, poisson generators in a chain.
+                # connect relay neurons internally
+                S_internal = Synapses(Gen, Gen, on_pre = '''is_active = True''')
+                S_internal.connect(i = np.arange(p2-1), j = np.arange(1, p2))       # connect neuron to the next one in line
+
+                S_in = Synapses(G, Gen, on_pre = 'is_active = True')
+                S_in.connect(i = )
+            """
+            autapses_in = Synapses(G, Gen, on_pre = 'is_active = True')
+            autapses_in.connect(condition = 'i == j')   # 1:1 connectivity
+
+            autapses_out = Synapses(Gen, G, on_pre = aut_reset)     # reset condition depends on autapse_type
+            autapses_out.connect(condition = 'i == j')  # 1:1 connectivity
+
+        elif autapse_mode == 'normal' or autapse_mode == 'uniform':
+
+            Gen = NeuronGroup(self.N_models,
+                              '''
+                              scheduled_time : second
+                              is_active : boolean
+                              ''',
+                              threshold = 'is_active and t >= scheduled_time',
+                              reset = 'is_active = False',
+                              method = 'euler')
+
+            if autapse_mode == 'normal':
+                autapse_in = Synapses(G, Gen, on_pre='''
+                                    is_active = True
+                                    scheduled_time = t + (p1 + randn()*p2)
+                                    ''')
+            else:   # if uniform
+                autapse_in = Synapses(G, Gen, on_pre='''
+                                    is_active = True
+                                    scheduled_time = t + (p1 + rand()*(p2 - p1))
+                                    ''')
+            
+            autapse_in.connect(condition = 'i == j')    # 1:1 connectivity
+
+            autapse_out = Synapses(Gen, G, on_pre = aut_reset)
+            autapse_out.connect(condition = 'i == j')
 
         # Intialise conditions
         G.v = self.x[:, 0]
@@ -369,8 +442,10 @@ class batchAQUA:
         else:       # if uniform autapse
             G.I_peak = I_peak
 
-
-        return G, autapses
+        if autapse_mode == 'standard':
+            return G, autapses
+        else:
+            return G, Gen, autapse_in, autapse_out
 
 
     def get_params(self, i):
