@@ -36,7 +36,7 @@ E2_neuron = {'name': 'RS', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak':
      'a': 0.03, 'b': 5, 'c': -50, 'd': 100, 'e': 0., 'f': 0., 'tau': 0.}
 
 
-'''- - - model equations - - - '''
+''' - - - model equations - - - '''
 
 syn_eq = """
     dSyn_exc/dt = -(Syn_exc/t_exc)/ms : 1 
