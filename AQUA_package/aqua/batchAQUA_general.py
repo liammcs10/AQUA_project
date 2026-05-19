@@ -243,9 +243,9 @@ class batchAQUA:
                 I_peak              if biexponential, peak current of the autapse
                                     if uniform, height of the step
                 p1, p2:             Parameters of each non-standard 'autapse_mode' distribution
-                                    if mode = 'poisson' or 'erlang', p1 = decay constant, p2 = k_stages (p2 = 1 for 'poisson')
-                                    if mode = 'normal', p1 = mean, p2 = std
-                                    if mode = 'uniform', p1 = minimum, p2 = maximum.
+                                    if mode = 'poisson' or 'erlang', p1 = decay constant (in ms), p2 = k_stages (p2 = 1 for 'poisson')
+                                    if mode = 'normal', p1 = mean, p2 = std (both in ms)
+                                    if mode = 'uniform', p1 = minimum, p2 = maximum (both in ms)
 
             OUT:
                 G:          brian2 NeuronGroup
@@ -269,9 +269,12 @@ class batchAQUA:
             if (p1 is None) or (p2 is None):
                 print("Must pass values for p1 and p2 when non-standard autapse delivery modes are used")
                 quit()
+            elif autapse_mode == 'poisson':
+                p2 = 1
+            
+
 
         if synapse_eq == None:      # separate from the autapse equation
-            print("NO SYNAPSE EQUATION (t_syn = 5)")
             synapse_eq = """
         dI_syn/dt = -(I_syn/t_syn)/ms : 1 
         t_syn : 1
@@ -282,7 +285,6 @@ class batchAQUA:
         # separate neuron equation for FS
         if np.all(self.isFS == 1):
             # U = (v < -55) / 0.025*(v + 55)**3 : 0. : 1
-            print("ALL FS!!!")
             ODEs = '''
         dv/dt = ((1/C)*(k *(v-v_r)*(v-v_t) - u + w + stimulus(t, i) + g_total))/ms : 1
         du/dt = a*(int(v>=-55)*(0.025*(v+55)**3) - u)/ms : 1'''
@@ -326,7 +328,7 @@ class batchAQUA:
         '''
 
 
-        EQS = ODEs + dw + synapse_eq + variables
+        EQS = ODEs + dw + synapse_eq + variables 
         # print(EQS)
 
         RESET = '''
@@ -352,60 +354,84 @@ class batchAQUA:
             autapses = Synapses(G, G, on_pre = aut_reset)
             autapses.connect(condition = 'i == j') # self-connections
 
-            if autapse_type == 'standard':
-                autapses.delay = self.tau*ms
-            elif autapse_type == 'biexponential':
+            if autapse_type == 'standard' or autapse_type == 'biexponential':
                 autapses.delay = self.tau*ms
             else:       # if uniform autapse
                 autapses.start.delay = t_a1*ms
                 autapses.stop.delay = t_a2*ms
         
-        elif autapse_mode == 'poisson': # or autapse_mode == 'erlang':         # the delay is sampled from a poisson distribution
+        elif autapse_mode == 'poisson' or autapse_mode == 'erlang':         # the delay is sampled from a poisson distribution
 
-            Gen = NeuronGroup(self.N_models,
+            N_relay = self.N_models * p2    # number of internal neurons
+            N_syn = N_relay - self.N_models            # number of internal synapses
+
+            on_pre = '''is_active += 1'''
+
+            Gen = NeuronGroup(N_relay,
                                      '''
-                                    rate = 1/tau_decay : Hz 
-                                    is_active : boolean
+                                    rate = 1/p1 : Hz 
+                                    is_active : 1
+                                    p1 : second
                                     ''',
-                                    threshold = 'is_active and rand() < rate * dt', 
-                                    reset = 'is_active = False',
+                                    threshold = 'is_active > 0 and rand() < rate * dt', 
+                                    reset = 'is_active -= 1',
                                     method = 'euler')
             
             Gen.is_active = False
-            """
+            Gen.p1 = p1
+            
             if autapse_mode == 'erlang':  # if an erlang distribution, poisson generators in a chain.
+                ''' Create the chain of poisson generators producing a gamma distribution '''
+                # connections into the relay
+                autapse_in = Synapses(G, Gen, on_pre = on_pre)
+                autapse_in.connect(condition = 'i == j')
+
                 # connect relay neurons internally
-                S_internal = Synapses(Gen, Gen, on_pre = '''is_active = True''')
-                S_internal.connect(i = np.arange(p2-1), j = np.arange(1, p2))       # connect neuron to the next one in line
+                autapse_internal = Synapses(Gen, Gen, on_pre = on_pre)
+                i_internal = np.arange(0, N_syn, 1)
+                j_internal = i_internal + self.N_models
+                autapse_internal.connect(i = i_internal, j = j_internal)       # connect neuron to the next one in line
 
-                S_in = Synapses(G, Gen, on_pre = 'is_active = True')
-                S_in.connect(i = )
-            """
-            autapses_in = Synapses(G, Gen, on_pre = 'is_active = True')
-            autapses_in.connect(condition = 'i == j')   # 1:1 connectivity
 
-            autapses_out = Synapses(Gen, G, on_pre = aut_reset)     # reset condition depends on autapse_type
-            autapses_out.connect(condition = 'i == j')  # 1:1 connectivity
+
+                # relay outputs
+                autapse_out = Synapses(Gen, G, on_pre = aut_reset)
+                i_out = np.arange(N_syn, N_relay, 1)
+                j_out = i_out - N_syn
+                autapse_out.connect(i = i_out, j = j_out)
+
+            else:       # if a poisson distribution is selected (p2 = 1)
+            
+                autapse_in = Synapses(G, Gen, on_pre = on_pre)
+                autapse_in.connect(condition = 'i == j')   # 1:1 connectivity
+
+                autapse_out = Synapses(Gen, G, on_pre = aut_reset)     # reset condition depends on autapse_type
+                autapse_out.connect(condition = 'i == j')  # 1:1 connectivity
 
         elif autapse_mode == 'normal' or autapse_mode == 'uniform':
 
             Gen = NeuronGroup(self.N_models,
                               '''
                               scheduled_time : second
-                              is_active : boolean
+                              is_active : 1
+                              p1 : second
+                              p2 : second
                               ''',
-                              threshold = 'is_active and t >= scheduled_time',
-                              reset = 'is_active = False',
+                              threshold = 'is_active > 0 and t >= scheduled_time',
+                              reset = 'is_active -= 1',
                               method = 'euler')
+
+            Gen.p1 = p1
+            Gen.p2 = p2
 
             if autapse_mode == 'normal':
                 autapse_in = Synapses(G, Gen, on_pre='''
-                                    is_active = True
+                                    is_active += 1 
                                     scheduled_time = t + (p1 + randn()*p2)
                                     ''')
             else:   # if uniform
                 autapse_in = Synapses(G, Gen, on_pre='''
-                                    is_active = True
+                                    is_active += 1
                                     scheduled_time = t + (p1 + rand()*(p2 - p1))
                                     ''')
             
@@ -442,8 +468,11 @@ class batchAQUA:
         else:       # if uniform autapse
             G.I_peak = I_peak
 
+
         if autapse_mode == 'standard':
             return G, autapses
+        elif autapse_mode == 'erlang':
+            return G, Gen, autapse_in, autapse_internal, autapse_out
         else:
             return G, Gen, autapse_in, autapse_out
 
