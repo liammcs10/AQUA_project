@@ -273,8 +273,7 @@ def isi_local_variation(spikes):
         n = len(row[~np.isnan(row)])    # number of spikes for this neuron
         if n == 0:
             LV[k] = np.nan
-        else:
-            LV[k] = (3/n-1) * np.sum(((row[:n-1] - row[1:n])/(row[:n-1] + row[1:n]))**2)
-
+        else:            
+            LV[k] = (3/(n-1)) * np.sum(((row[:n-1] - row[1:n])/(row[:n-1] + row[1:n]))**2)
     
     return LV
