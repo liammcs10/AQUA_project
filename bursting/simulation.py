@@ -19,7 +19,7 @@ from aqua.AQUA_general import AQUA
 from aqua.batchAQUA_general import *
 from aqua.plotting_functions import *
 from aqua.stimulus import step_current, filtered_white_noise_fast
-from aqua.utils import STA
+from aqua.utils import *
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -127,10 +127,10 @@ def sim(args, conf):
     #gain_modulation(params_df, conf)
 
     # Test 2 - gain modulation on biexponential autapse in brian2
-    #out_df = gain_modulation_biexponential(params_df, conf)
+    out_df = gain_modulation_biexponential(params_df, conf)
 
     # Test 3 - STA
-    calculate_STA(params_df, conf)
+    # calculate_STA(params_df, conf)
 
 
 
@@ -287,10 +287,8 @@ def gain_modulation_biexponential(params_df, conf):
     # biexponential autapse - fix rise time
     t_a1_arr = np.ones(N_sims)
     t_a2_arr = 1/np.array(sim_params['e'])
-    t_a2_arr[t_a2_arr == np.inf] = 2.       # remove infinities where there is no autapse
-
-    print("- - - biexponential - - -")
-    print(t_a2_arr)
+    t_a2_arr[t_a2_arr == np.inf] = 2.         # remove infinities where there is no autapse, replace with any number since f = 0
+    Aut_peak = np.array(sim_params['f'])      # peak current of the biexponential autapse
     
     # somewhere to store the outputs
     cols = ['e', 'f', 'tau', 'autapse current', 'autapse delay', 'I_h', 'F_instant', 'F_steady']
@@ -321,7 +319,7 @@ def gain_modulation_biexponential(params_df, conf):
         I_injTA = TimedArray(values = I_inj[idx_start:idx_end, :].T, dt = dt*ms, name = 'I_injTA')    # inputs as a TimedArray
 
         # convert batch to brian2
-        G, autapses = batch.meetBrian(stimulus_name = I_injTA, biexponential = True, t_a1 = t_a1_arr[idx_start:idx_end], t_a2 = t_a2_arr[idx_start:idx_end])
+        G, autapses = batch.meetBrian(stimulus_name = I_injTA, autapse_type = 'biexponential', t_a1 = t_a1_arr[idx_start:idx_end], t_a2 = t_a2_arr[idx_start:idx_end], I_peak = Aut_peak[idx_start:idx_end])
 
         # simulation timestep
         defaultclock.dt = dt*ms
@@ -337,7 +335,7 @@ def gain_modulation_biexponential(params_df, conf):
 
         """ - - - from this point analyse from spike times and start building output df - - - """
         # quantifying autapse values -> don't correspond to biexponential autapse but still differentiate all neurons...
-        autapse_current = list(batch.get_net_autapse_currents())
+        autapse_current = list(batch.get_net_autapse_current_biexponential(t1 = t_a1_arr[idx_start:idx_end], t2 = t_a2_arr[idx_start:idx_end], I_peak = Aut_peak[idx_start:idx_end]))
         autapse_delay = list(batch.get_mean_autapse_delays())
 
         # brian2 output needs to be converted here...
