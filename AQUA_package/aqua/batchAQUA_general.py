@@ -258,7 +258,7 @@ class batchAQUA:
 
         if (autapse_type in ['biexponential', 'uniform']):
             if (t_a1 is None) or (t_a2 is None) or (I_peak is None):
-                print("Must pass values for t_a1, t_a1, I_peak when non-standard autapse models are used")
+                print("Must pass values for t_a1, t_a2, I_peak when non-standard autapse models are used")
                 quit()
             
         # check autapse_mode
@@ -277,7 +277,7 @@ class batchAQUA:
         if synapse_eq == None:      # separate from the autapse equation
             synapse_eq = """
         dI_syn/dt = -(I_syn/t_syn)/ms : 1 
-        t_syn : 1
+        t_syn = 5 : 1
         g_total = I_syn : 1
         """
         
@@ -455,7 +455,7 @@ class batchAQUA:
         G.b = self.b
         G.c = self.c
         G.d = self.d
-        G.t_syn = 5
+
 
         # initialise autapse variables
         if autapse_type == 'standard':
@@ -505,6 +505,26 @@ class batchAQUA:
         a = np.empty(self.N_models)
         a.fill(np.nan)
         return np.divide(self.f, self.e, out = a, where=self.e!=0.)
+    
+    
+    def get_net_autapse_current_biexponential(self, t1, t2, I_peak):
+        """
+        Returns the net current from autapses in the entire batch.
+        If infinite decay time, then np.nan is returned in that element.
+        
+        """
+
+        assert len(t1) == self.N_models, 'Input t1 must be same size as N_models'
+        assert len(t2) == self.N_models, 'Input t2 must be same size as N_models'
+        assert len(I_peak) == self.N_models, 'Input I_peak must be same size as N_models'
+
+        a = np.empty(self.N_models)
+        a.fill(np.nan)
+
+        A = I_peak * ((t1/t2)**(t1/(t2 - t1)) - (t1/t2)**(t2/(t2 - t1)))**-1
+
+        return A * (t2 - t1)
+    
 
     def get_mean_autapse_delays(self):
         """

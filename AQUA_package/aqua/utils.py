@@ -11,6 +11,8 @@ import pandas as pd
 import brian2
 from tqdm import tqdm
 
+from scipy.signal import find_peaks, peak_prominences
+
 
 def convert_to_biexponential_peak(net_current, t1, t2):
     '''
@@ -186,6 +188,93 @@ def rolling_VR_dist(spikes1, spikes2, filter, window = 500):
     return time_VR
 
 
+def analyze_isi_peaks(counts, bin_edges, prominence = None, distance = None):
+    """
+    Finds peaks in an ISI histogram and calculates the mean and std 
+    of the ISI values contributing to each peak region.
+    
+    Parameters:
+    -----------
+    counts : array-like
+        The heights of the histogram bins.
+    bin_edges : array-like
+        The edges of the bins (length should be len(counts) + 1).
+    prominence : float
+        Required prominence of peaks (helps filter background noise).
+    width : int
+        Required width of peaks in terms of number of bins.
+        
+    Returns:
+    --------
+    results : list of dicts
+        Each dict contains 'peak_isi', 'mean', and 'std' for a detected peak.
+    """
+    if prominence is None and distance is None:
+        # calculated to match the plot_ISI_w_peaks
+        prominence = 0.1*np.max(counts)
+        distance = 0.1*(len(bin_edges)-1)
 
 
+    # Calculate bin centers
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    
+    # 1. Find peaks based on height/prominence/width
+    # Prominence is key for ignoring background noise
+    peaks, properties = find_peaks(counts, prominence = prominence, distance = distance)
+    # 2. Find the boundaries (valleys) of each peak to isolate the distribution
+    # width_heights determines where the "width" of the peak is measured
+    results = []
+    
+    # Get left and right bases (valleys) for each peak
+    prominences = properties['prominences']
+    left_bases = properties['left_bases']
+    right_bases = properties['right_bases']
+    
+    for i in range(len(peaks)):
+        idx = peaks[i]          # index of the peak
+        left = left_bases[i]    
+        right = right_bases[i]
+        
+        # Isolate the bins belonging to this specific peak
+        peak_bins = bin_centers[left:right+1]
+        peak_counts = counts[left:right+1]
+        
+        # Calculate the weighted mean and std for this local distribution
+        # Mean = sum(x * w) / sum(w)
+        local_mean = np.sum(peak_bins * peak_counts) / np.sum(peak_counts)
+        
+        # Std = sqrt(sum(counts * (bins - mean)^2) / sum(counts))
+        local_var = np.sum(peak_counts * (peak_bins - local_mean)**2) / np.sum(peak_counts)
+        local_std = np.sqrt(local_var)
+        
+        results.append({
+            'peak_isi': bin_centers[idx],
+            'mean': local_mean,
+            'std': local_std,
+            'count_sum': np.sum(peak_counts),
+            'prominence': prominences[i]
+        })
+        
+    return results
 
+
+def isi_local_variation(spikes):
+    '''
+    Calculate the local variation in the ISI distribution given a spike train.
+    This metric is robust to non-stationary spike trains.
+    
+    Params:
+        spikes:         nd-array of spike times, each row is a separate spike train
+    '''
+
+    isi = np.diff(spikes, axis = 1)     # the difference is taken along each row
+    LV = np.zeros(len(isi))             # one value per spike train
+    for k, row in enumerate(isi):
+        n = len(row[~np.isnan(row)])    # number of spikes for this neuron
+        if n == 0:
+            LV[k] = np.nan
+        else:
+            LV[k] = (3/n-1) * np.sum(((row[:n-1] - row[1:n])/(row[:n-1] + row[1:n]))**2)
+
+    
+    return LV
