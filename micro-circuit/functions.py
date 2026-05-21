@@ -1,54 +1,11 @@
 import numpy as np
+import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks, peak_widths
 
+from matplotlib.colors import ListedColormap
 
-def plot_ISI_w_peaks(spike_times, bins = 50, x_range = (0, 100), fig = None, ax = None):
-    # --- 1. Calculate ISIs ---
-    # Assuming spike_times is your 1D array of spike timestamps
-    isis = np.diff(spike_times)
 
-    # --- 2. Create Histogram ---
-    # You can adjust 'bins' to change the resolution of your analysis
-    counts, bin_edges = np.histogram(isis, bins = bins, range = x_range)
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-
-    # --- 3. Detect Peaks and Widths ---
-    # height: minimum count to be considered a peak
-    # distance: minimum number of bins between peaks
-    peaks, properties = find_peaks(counts, height=np.max(counts)*0.1, distance=5)
-    results_half = peak_widths(counts, peaks, rel_height=0.5)
-
-    # Mapping indices back to time units for plotting
-    def idx_to_val(idx):
-        return np.interp(idx, np.arange(len(bin_centers)), bin_centers)
-
-    peak_times = bin_centers[peaks]
-    left_vals = idx_to_val(results_half[2])
-    right_vals = idx_to_val(results_half[3])
-    width_heights = results_half[1]
-
-    # --- 4. Plotting ---
-    if fig is None and ax is None:
-        fig, ax = plt.subplots(1, 1, figsize = (4, 4))
-    
-    ax.hist(isis, bins=50, range = x_range, color='skyblue', edgecolor='black', alpha=0.7, label='ISI Histogram')
-
-    # Add vertical lines at peaks
-    for pt in peak_times:
-        ax.axvline(x=pt, color='red', linestyle='--', linewidth=2, label='Peak' if pt == peak_times[0] else "")
-
-    # Add horizontal double-headed arrows for widths
-    for i in range(len(peaks)):
-        y = width_heights[i]
-        ax.annotate('', xy=(left_vals[i], y), xytext=(right_vals[i], y),
-                    arrowprops=dict(arrowstyle='<->', color='green', lw=2, shrinkA=0, shrinkB=0))
-        ax.text((left_vals[i] + right_vals[i])/2, y, f' {right_vals[i]-left_vals[i]:.3f} ms', 
-                ha='center', va='bottom', color='green', fontweight='bold')
-
-    ax.set_xlabel('Interspike Interval (ms)')
-    ax.set_ylabel('Frequency')
-    ax.set_xlim(x_range)
 
 
 def visualise_connectivity(S):
@@ -70,3 +27,77 @@ def visualise_connectivity(S):
     plt.ylim(-1, Nt)
     plt.xlabel('Source neuron index')
     plt.ylabel('Target neuron index')
+
+
+def plot_heatmap(df, x_col, y_col, value_col, fixed_col, fixed_val, fig, ax, v_min=None, v_max=None):
+    """
+    Plots a heatmap for two variables while holding a third variable constant.
+    - No limits: Symmetric 'vlag' centered at 0.
+    - Limits provided: Sequential 'Reds' colormap.
+    """
+    # 1. Filter the dataframe
+    filtered_df = df[np.isclose(df[fixed_col], fixed_val)]
+    
+    if filtered_df.empty:
+        print(f"Warning: No data found where {fixed_col} == {fixed_val}")
+        return ax
+
+    # 2. Pivot the filtered data
+    try:
+        pivot_table = filtered_df.pivot(index=y_col, columns=x_col, values=value_col)
+    except ValueError:
+        pivot_table = filtered_df.pivot_table(index=y_col, columns=x_col, 
+                                              values=value_col, aggfunc='mean')
+
+    # 3. Handle Symmetry and Colormap Logic
+    if v_min is None and v_max is None:
+        # Symmetric mode
+        limit = np.abs(pivot_table.values).max()
+        v_min, v_max = -limit, limit
+        cmap = "vlag"
+        center = 0
+    else:
+        # Sequential "Red" Mode using only the second half of vlag
+        vlag_full = plt.get_cmap("vlag")
+        # Get the colors from the 50% mark to 100% mark
+        red_half_colors = vlag_full(np.linspace(0.5, 1, 256))
+        cmap = ListedColormap(red_half_colors)
+        center = None
+
+    # 4. Plot
+    sns.heatmap(pivot_table, annot=False, cmap=cmap, ax=ax, 
+                vmin=v_min, vmax=v_max, center=center)
+    
+    ax.set_xlabel(x_col)
+    ax.set_ylabel(y_col)
+    
+    return ax
+
+def create_heatmaps(df_aut, df_naut, diff_df, metric, fixed_values, v_min = None, v_max = None):
+    # each row will be a different set of inputs
+    fig, ax = plt.subplots(3, 3, figsize = (12, 8), sharex = 'col', sharey = 'row')
+    fig.tight_layout()
+    fig.suptitle(f'- - {metric} - -', x = 0.49, y = 1.0)
+
+    # Injected vs w1
+    plot_heatmap(df_aut, 'I_inj', 'w_e1_e2', metric, 'w_e2_e1', fixed_values[0], fig = fig, ax = ax[0, 0], v_min = v_min, v_max = v_max)
+    plot_heatmap(df_naut, 'I_inj', 'w_e1_e2', metric, 'w_e2_e1', fixed_values[0], fig = fig, ax = ax[1, 0], v_min = v_min, v_max = v_max)
+    plot_heatmap(diff_df, 'I_inj', 'w_e1_e2', metric, 'w_e2_e1', fixed_values[0], fig = fig, ax = ax[2, 0], v_min = None, v_max = None)
+
+    # Injected vs w2
+    plot_heatmap(df_aut, 'I_inj', 'w_e2_e1', metric, 'w_e1_e2', fixed_values[1], fig = fig, ax = ax[0, 1], v_min = v_min, v_max = v_max)
+    plot_heatmap(df_naut, 'I_inj', 'w_e2_e1', metric, 'w_e1_e2', fixed_values[1], fig = fig, ax = ax[1, 1], v_min = v_min, v_max = v_max)
+    plot_heatmap(diff_df, 'I_inj', 'w_e2_e1', metric, 'w_e1_e2', fixed_values[1], fig = fig, ax = ax[2, 1], v_min = None, v_max = None)
+
+    # w1 vs w2
+    plot_heatmap(df_aut, 'w_e1_e2', 'w_e2_e1', metric, 'I_inj', fixed_values[2], fig = fig, ax = ax[0, 2], v_min = v_min, v_max = v_max)
+    plot_heatmap(df_naut, 'w_e1_e2', 'w_e2_e1', metric, 'I_inj', fixed_values[2], fig = fig, ax = ax[1, 2], v_min = v_min, v_max = v_max)
+    plot_heatmap(diff_df, 'w_e1_e2', 'w_e2_e1', metric, 'I_inj', fixed_values[2], fig = fig, ax = ax[2, 2], v_min = None, v_max = None)
+
+    rows = ["Autaptic Neuron", "Non-Autaptic Neuron", "Difference"]
+    for axes, row_label in zip(ax[:,0], rows):
+        axes.annotate(row_label, xy=(0, 0.5), xytext=(-axes.yaxis.labelpad - 5, 0),
+                    xycoords=axes.yaxis.label, textcoords='offset points',
+                    size='large', ha='right', va='center', rotation=90)
+    
+    return fig, ax

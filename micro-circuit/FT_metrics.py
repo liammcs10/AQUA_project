@@ -37,18 +37,20 @@ def calculate_FT(binary_spikes, dt, filter = None):
     '''
 
     if filter is None:
-        # if no filter, use a gaussian
-        filter = windows.gaussian(M = 10000, std = 100)
-        filter /= filter.sum()    # normalise
-
-    # convolve binary spikes
-    freq = convolve(binary_spikes, filter)[:np.shape(binary_spikes)[0]]
-
-    #calculate FFT
-    FFT = np.fft.fft(freq)
-
-    #calculate corresponding frequencies
-    FFT_frequencies = np.fft.fftfreq(len(freq), d = dt/1000)
+        # if filter is none, calculate the spectrum on the binary time series
+        # calculate FFT
+        FFT = np.fft.fft(binary_spikes)
+        # calculate corresponding frequencies
+        FFT_frequencies = np.fft.fftfreq(len(binary_spikes), d = dt/1000)
+    
+    else:
+            
+        # convolve binary spikes
+        freq = convolve(binary_spikes, filter)[:np.shape(binary_spikes)[0]]
+        # calculate FFT
+        FFT = np.fft.fft(freq)
+        # calculate corresponding frequencies
+        FFT_frequencies = np.fft.fftfreq(len(freq), d = dt/1000)
 
     return FFT, FFT_frequencies
 
@@ -151,3 +153,16 @@ def get_top_fft_peaks(fft_values, fft_freqs, min_freq=0, num_peaks=1):
     
     return peak_freqs, peak_heights
 
+def calculate_ISI_diff(isi_counts1, isi_counts2, bin_edges):
+    '''
+    Returns the 'distance' between 2 ISI histograms with the same bin_edges.
+    The distance is calculated much like the FT_difference above
+    
+    '''
+
+    norm_counts1 = isi_counts1 / np.sum(isi_counts1)
+    norm_counts2 = isi_counts2 / np.sum(isi_counts2)
+
+    diff = np.sqrt((norm_counts1 - norm_counts2)**2)
+
+    return diff

@@ -15,6 +15,7 @@ import pickle
 import gc
 import tracemalloc
 from scipy.signal import convolve, windows
+from scipy.stats import wasserstein_distance
 
 from FT_metrics import *
 
@@ -102,7 +103,7 @@ def visualise_connectivity(S):
 def main():
 
     # DRIVING CURRENTS
-    INPUT_E1 = np.linspace(120, 280, 20)# 15
+    INPUT_E1 = np.linspace(120, 280, 20)# 20
     INPUT_E2 = 150
 
     # SYNAPSE STRENGTH
@@ -111,12 +112,12 @@ def main():
 
 
     # simulate the autaptic network
-    simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, "synch_analysis_aut.pickle")
+    simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, "synch_analysis_aut_test.pickle")
 
     # simulate the non-autaptic network
-    simulate(E2_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, "synch_analysis_naut.pickle")
+    simulate(E2_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, "synch_analysis_naut_test.pickle")
 
-    # Can now simulate networks with different autapse types.
+    # Can now simulate networks with different aut apse types.
     # Also need to decide autapse delivery mode...
 
 
@@ -324,31 +325,34 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
 
     ''' - - - CALCULATE METRICS - - - '''
 
-    cols = ['I_inj', 'w_e1_e2', 'w_e2_e1', 'FT_distance', 'ISI_distance', 'SPIKE_distance', 'SPIKE_synchrony', 'spike_directionality']
-    results = pd.DataFrame(columns = cols)
+    cols = ['I_inj', 'w_e1_e2', 'w_e2_e1', 'FT_distance', 'FT_EMD', 'ISI_distance', 'SPIKE_distance', 'SPIKE_synchrony', 'spike_directionality']
+    results_distance = pd.DataFrame(columns = cols)
+    isi_cols = ['neuron_number', 'I_inj', 'w_e1_e2', 'w_e2_e1', 'peak_isi', 'mean', 'std', 'count_sum', 'CV_isi', 'LV']
+    results_isi_E1 = pd.DataFrame(columns = isi_cols)
+    results_isi_E2 = pd.DataFrame(columns = isi_cols)
 
     # set values from the simulation
-    results['I_inj'] = I1[:, 0]                   # Current into E1
-    results['w_e1_e2'] = syn_E1.w_exc[:]         # Synapse weight from e1 to e2
-    results['w_e2_e1'] = syn_E2.w_exc[:]         # Synapse weight from e2 to e1
-
-
-    #visualise_connectivity(syn_E1_I_naut)
-
-    #visualise_connectivity(syn_I_E2_naut)
+    results_distance['I_inj'] = I1[:, 0]                   # Current into E1
+    results_distance['w_e1_e2'] = syn_E1.w_exc[:]         # Synapse weight from e1 to e2
+    results_distance['w_e2_e1'] = syn_E2.w_exc[:]         # Synapse weight from e2 to e1
 
     ## Get spike trains
     spike_train_E1 = spikemon_E1.spike_trains()
     spike_train_E2 = spikemon_E2.spike_trains()
     #spike_train_I = spikemon_I_aut.spike_trains()
 
-
     # convert to aqua spikes
     spikes_E1 = convert_spikes_to_aqua(spike_train_E1)
     spikes_E2 = convert_spikes_to_aqua(spike_train_E2)
     #spikes_I = convert_spikes_to_aqua(spike_train_I)
 
+    # get the isis
+    isi_E1 = np.diff(spikes_E1, axis = 1)
+    isi_E2 = np.diff(spikes_E2, axis = 1)
 
+    # calculate the local variation
+    local_variation_E1 = isi_local_variation(spikes_E1)
+    local_variation_E2 = isi_local_variation(spikes_E2)
 
     ''' - - FT metric - - '''
     bin_E1 = binarise_spikes(spikes_E1, dt, N_iter)
@@ -360,22 +364,52 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
 
     edges = [0, T]     # edges for pyspike
 
-    # store the metrics
+    # store the distance metrics here
     FT_dist = np.zeros(N_SIMS)
+    FT_EMD = np.zeros(N_SIMS)
     ISI_dist = np.zeros(N_SIMS)
     SPIKE_dist = np.zeros(N_SIMS)
     SPIKE_synch = np.zeros(N_SIMS)
     spike_directionality = np.zeros(N_SIMS)
 
+    # store the ISI summaries here
+    # neuron E1
+    I_inj_lst_E1 = []
+    w_e1_e2_lst_E1 = []
+    w_e2_e1_lst_E1 = []
+    neuron_number_E1 = []
+    peak_isi_E1 = []
+    mean_E1 = []
+    std_E1 = []
+    count_sum_E1 = []
+    CV_isi_E1 = []
+    LV_E1 = []
+
+    # neuron E2
+    I_inj_lst_E2 = []
+    w_e1_e2_lst_E2 = []
+    w_e2_e1_lst_E2 = []
+    neuron_number_E2 = []
+    peak_isi_E2 = []
+    mean_E2 = []
+    std_E2 = []
+    count_sum_E2 = []
+    CV_isi_E2 = []
+    LV_E2 = []
+
+
     for i in range(N_SIMS):
 
         '''FT distance'''
-        # calculate FFT
-        _, freq = calculate_FT(bin_E1[0, :], dt, gauss)
-        fft_E1, _ = calculate_FT(bin_E1[i, :], dt, gauss)
-        fft_E2, _ = calculate_FT(bin_E2[i, :], dt, gauss)
-
+        # calculate FFT with no filter
+        _, freq = calculate_FT(bin_E1[0, :], dt)
+        n_freq = len(freq)//2
+        fft_E1, _ = calculate_FT(bin_E1[i, :], dt)
+        fft_E2, _ = calculate_FT(bin_E2[i, :], dt)
         FT_dist[i] = calculate_FT_diff(fft_E1, fft_E2, freq)
+
+        # Earth mover's distance
+        FT_EMD[i] = wasserstein_distance(freq[:n_freq], freq[:n_freq], np.abs(fft_E1[:n_freq]), np.abs(fft_E2[:n_freq]))
 
         '''- - PYSPIKE metrics - - '''
         # create pyspike spike_trains
@@ -394,25 +428,93 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
         '''- - SPIKE directionality - -'''
         spike_directionality[i] = spk.spike_directionality(spk_E1, spk_E2)
 
-    # append to dataframes
-    results['FT_distance'] = FT_dist
-    results['ISI_distance'] = ISI_dist
-    results['SPIKE_distance'] = SPIKE_dist
-    results['SPIKE_synchrony'] = SPIKE_synch
-    results['spike_directionality'] = spike_directionality
+
+        '''- - ISI histogram metrics - -'''
+        bins = 100
+        x_range = (0, 150)
+    
+        counts_E1, bin_edges_E1 = np.histogram(isi_E1[i, :], bins = bins, range = x_range)
+        counts_E2, bin_edges_E2 = np.histogram(isi_E2[i, :], bins = bins, range = x_range)
+        results_E1 = analyze_isi_peaks(counts_E1, bin_edges_E1)
+        results_E2 = analyze_isi_peaks(counts_E2, bin_edges_E2)
+
+        # append the data for each identified peak
+        for j in range(len(results_E1)):        # loop over all the peaks in E1
+            I_inj_lst_E1.append(I1[i, 0])
+            w_e1_e2_lst_E1.append(syn_E1.w_exc[i])
+            w_e2_e1_lst_E1.append(syn_E2.w_exc[i])
+            neuron_number_E1.append(i)
+            peak_isi_E1.append(results_E1[j]['peak_isi'])
+            mean_E1.append(results_E1[j]['mean'])
+            std_E1.append(results_E1[j]['std'])
+            count_sum_E1.append(results_E1[j]['count_sum'])
+            CV_isi_E1.append(results_E1[j]['std']/results_E1[j]['mean'])
+            LV_E1.append(local_variation_E1[i])
+
+        for k in range(len(results_E2)):        # loop over all the peaks in E2
+            I_inj_lst_E2.append(I1[i, 0])
+            w_e1_e2_lst_E2.append(syn_E1.w_exc[i])
+            w_e2_e1_lst_E2.append(syn_E2.w_exc[i])
+            neuron_number_E2.append(i)
+            peak_isi_E2.append(results_E2[k]['peak_isi'])
+            mean_E2.append(results_E2[k]['mean'])
+            std_E2.append(results_E2[k]['std'])
+            count_sum_E2.append(results_E2[k]['count_sum'])
+            CV_isi_E2.append(results_E2[k]['std']/results_E2[k]['mean'])
+            LV_E2.append(local_variation_E2[k])
+        
 
 
+    # append to dataframes, these are comparison metrics between both responses...
+    results_distance['FT_distance'] = FT_dist
+    results_distance['FT_EMD'] = FT_EMD
+    results_distance['ISI_distance'] = ISI_dist
+    results_distance['SPIKE_distance'] = SPIKE_dist
+    results_distance['SPIKE_synchrony'] = SPIKE_synch
+    results_distance['spike_directionality'] = spike_directionality
 
-    with open(outfile, 'wb') as file:
-        pickle.dump(results, file)
+    # save the data in the ISI dictionaries...
+    # E1
+    results_isi_E1['neuron_number'] = neuron_number_E1
+    results_isi_E1['I_inj'] = I_inj_lst_E1
+    results_isi_E1['w_e1_e2'] = w_e1_e2_lst_E1
+    results_isi_E1['w_e2_e1'] = w_e2_e1_lst_E1
+    results_isi_E1['peak_isi'] = peak_isi_E1
+    results_isi_E1['mean'] = mean_E1
+    results_isi_E1['std'] = std_E1
+    results_isi_E1['count_sum'] = count_sum_E1
+    results_isi_E1['CV_isi'] = CV_isi_E1
+    results_isi_E1['LV'] = LV_E1
 
-    snap2 = tracemalloc.take_snapshot()
-    stats = snap2.compare_to(snap1, 'lineno')
-    print(f'Before Deletion: {stats[0].size_diff / 10**6:.2f} MB')
+    # E2
+    results_isi_E2['neuron_number'] = neuron_number_E2
+    results_isi_E2['I_inj'] = I_inj_lst_E2
+    results_isi_E2['w_e1_e2'] = w_e1_e2_lst_E2
+    results_isi_E2['w_e2_e1'] = w_e2_e1_lst_E2
+    results_isi_E2['peak_isi'] = peak_isi_E2
+    results_isi_E2['mean'] = mean_E2
+    results_isi_E2['std'] = std_E2
+    results_isi_E2['count_sum'] = count_sum_E2
+    results_isi_E2['CV_isi'] = CV_isi_E2
+    results_isi_E2['LV'] = LV_E2
+
+
+    # save the distance metrics
+    filename_dist = outfile[:-7] + "DIST" + outfile[-7:]
+    with open(filename_dist, 'wb') as file:
+        pickle.dump(results_distance, file)
+
+    # save the E1 ISI metrics
+    filename_e1 = outfile[:-7] + "ISI_E1" + outfile[-7:]
+    with open(filename_e1, 'wb') as file:
+        pickle.dump(results_isi_E1, file)
+
+    # save the E2 ISI metrics
+    filename_e2 = outfile[:-7] + "ISI_E2" + outfile[-7:]
+    with open(filename_e2, 'wb') as file:
+        pickle.dump(results_isi_E2, file)
+
     gc.collect()
-    snap2 = tracemalloc.take_snapshot()
-    stats = snap2.compare_to(snap1, 'lineno')
-    print(f'After Deletion: {stats[0].size_diff / 10**6:.2f} MB')
 
 
     
