@@ -1,3 +1,18 @@
+'''
+The idea here is to replicate the simulation in synchrony analysis but instead of varying external parameters
+like the driving current or synaptic weights. We will fix these and only vary the autapse parameters (maybe only the peak
+of the autapse current). 
+
+We want to quantify if the autapse is bursting or not (multiple frequencies in the output), average frequency, etc...
+
+Output metrics would be average synchrony (e.g. EMD or FT distance) and regularity (CV_isi).
+
+GOAL: demonstrate that non-linearity due to the autapse is producing these changes in behaviour.
+
+
+'''
+
+
 ''' import aqua '''
 from aqua.batchAQUA_general import batchAQUA
 from aqua.AQUA_general import AQUA
@@ -24,15 +39,14 @@ from functions import *
 # import brian2cuda
 # set_device("cuda_standalone")
 
+
+
 I_neuron = {'name': 'FS', 'C': 20, 'k': 1, 'v_r': -55, 'v_t': -40, 'v_peak': 25,
      'a': 0.2, 'b': -2, 'c': -45, 'd': 0, 'e': 0.2, 'f': 0., 'tau': 0.}
 
-# strong autaptic neuron on RS resonator...
-E1_neuron = {'name': 'RS', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
-     'a': 0.03, 'b': 5, 'c': -50, 'd': 100, 'e': 0.2, 'f': 250., 'tau': 0.}     # instantaneous autapse bc all synapses are instant.
 
 # non-autaptic neuron - RS resonator
-E2_neuron = {'name': 'RS', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
+E_neuron = {'name': 'RS', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
      'a': 0.03, 'b': 5, 'c': -50, 'd': 100, 'e': 0., 'f': 0., 'tau': 0.}
 
 
@@ -79,32 +93,31 @@ w_exc = clip(w_exc + Apre, 0, w_max)
 
 
 
+
 def main():
 
     # DRIVING CURRENTS
-    INPUT_E1 = np.linspace(120, 280, 20)# 20
-    INPUT_E2 = 150
+    INPUT_E = 200
 
     # SYNAPSE STRENGTH
-    E1_TO_E2 = np.linspace(20, 100, 10)# 10   
-    E2_TO_E1 = np.linspace(20, 100, 10)# 10
+    W = 56 
 
+    # autapse params
+    e = 0.2
+    tau = 2.0
+    f_vals = np.linspace(100, 450, 50)      # range of autapse parameters.
 
     # simulate the autaptic network
-    simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, "synch_analysis_aut_test.pickle")
+    simulate(E_neuron, I_neuron, INPUT_E, W, e, f_vals, tau, "burst_analysis_test.pickle")
 
-    # simulate the non-autaptic network
-    simulate(E2_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, "synch_analysis_naut_test.pickle")
 
-    # Can now simulate networks with different autapse types.
+    # Can now simulate networks with different aut apse types.
     # Also need to decide autapse delivery mode...
 
 
 
 
-
-
-def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO_E1, outfile, autapse_type = 'standard', t1 = None, t2 = None, I_peak = None):
+def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, autapse_type = 'standard', t1 = None, t2 = None, I_peak = None):
     """
     Quick analysis over parameters to see if the autapse extends the range of synchrony.
 
@@ -120,8 +133,8 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
     tracemalloc.start()
     snap1 = tracemalloc.take_snapshot()
 
-    ### Store the simulation parameters below. 
-    N_SIMS = len(INPUT_E1) * len(E1_TO_E2) * len(E2_TO_E1)
+    # number of neurons/simulations
+    N_SIMS = len(f_vals) + 1
 
     #  INHIBITORY PARAMETERS
     THRESHOLD_OFFSET = 0
@@ -135,36 +148,40 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
     
     ''' - - - define the excitatory populations - - - '''
     # neuron parameters, 2 populations for each neuron...
-    params_E1 = [E1_neuron for _ in range(N_SIMS)]      # 2 neurons
-    params_E2 = [E2_neuron for _ in range(N_SIMS)]      # 2 neurons
+    params_E1 = []
+    params_E1.append(E_neuron)
+    for f_value in f_vals:
+        temp = E_neuron.copy()
+        temp['e'] = e_val
+        temp['f'] = f_value
+        temp['tau'] = tau_val
+        params_E1.append(temp)
 
+    E1_df = pd.DataFrame(params_E1)
+    f_values = E1_df['f'].unique()        # all f values, len = N_SIMS
+    params_E2 = [E_neuron for _ in range(N_SIMS)]      # 2 neurons
+    E2_df = pd.DataFrame(params_E2)
 
     x_start = np.full(shape = (N_SIMS, 3), fill_value = np.array([-60, 0, 0]))
     t_start = np.zeros(N_SIMS)
 
     # create the batch E1
-    batch_E1 = batchAQUA(params_E1)
+    batch_E1 = batchAQUA(E1_df)
     batch_E1.Initialise(x_start, t_start)
 
     # create the batch E1
-    batch_E2 = batchAQUA(params_E2)
+    batch_E2 = batchAQUA(E2_df)
     batch_E2.Initialise(x_start, t_start)
 
     # create the input current - STEP CURRENT
-    N_at_each_current = N_SIMS // len(INPUT_E1)       # number of simulations at each current (number of total weight combinations)
-    I1 = np.array([i * np.ones((N_at_each_current, N_iter)) for i in INPUT_E1])        # stronger driving current to E1s
-    I1 = I1.reshape(-1, N_iter)
-
-    # same driving current for all E2
-    I2 = INPUT_E2 * np.ones((N_SIMS, N_iter))        # weaker current to E2
+    I_E = INPUT_E * np.ones((N_SIMS, N_iter))
 
     # create a Timed Arrays
-    I1_TA = TimedArray(values = I1.T, dt = dt*ms, name = 'I1_TA')   
-    I2_TA = TimedArray(values = I2.T, dt = dt*ms, name = 'I2_TA')
+    IE_TA = TimedArray(values = I_E.T, dt = dt*ms, name = 'IE_TA')   
 
     # convert to brian2 with the standard autapse model
-    E1, aut_E1 = batch_E1.meetBrian(stimulus_name = I1_TA, synapse_eq = syn_eq, autapse_type = autapse_type, t_a1 = t1, t_a2 = t2, I_peak = I_peak)
-    E2, aut_E2 = batch_E2.meetBrian(stimulus_name = I2_TA, synapse_eq = syn_eq)     # no autapse (defaults to standard)
+    E1, aut_E1 = batch_E1.meetBrian(stimulus_name = IE_TA, synapse_eq = syn_eq, autapse_type = autapse_type, t_a1 = t1, t_a2 = t2, I_peak = I_peak)
+    E2, aut_E2 = batch_E2.meetBrian(stimulus_name = IE_TA, synapse_eq = syn_eq)     # no autapse (defaults to standard)
 
 
     ''' - - - define the inhibitory neuron - - - '''
@@ -178,6 +195,8 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
 
     # input current will be just subthreshold
     threshold, _ = batch_I.get_threshold(idx = 0)
+    # threshold = 71.26
+    print(f"THRESHOLD = {threshold}")
     I_inh = np.array((threshold - THRESHOLD_OFFSET)*np.ones((N_SIMS, N_iter)))
     I_inhTA = TimedArray(values = I_inh.T, dt = dt*ms, name = 'I_inhTA')
 
@@ -216,18 +235,12 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
     E2.t_inh = 5              # ms
     I.t_inh = 5               # ms
 
-
-    N_w = len(E1_TO_E2) * len(E2_TO_E1)
-    N_e1 = len(E1_TO_E2)
-    for l in range(len(INPUT_E1)):
-        for m, w1 in enumerate(E1_TO_E2):
-            for n, w2 in enumerate(E2_TO_E1):
-                idx = l * N_w + m * N_e1 + n
-                syn_E1.w_exc[idx, idx] = w1    # pA, weight from E1 -> E2
-                syn_E2.w_exc[idx, idx] = w2    # pA, weight from E2 -> E1
+    # set synapse strength
+    syn_E1.w_exc[:, :] = W
+    syn_E2.w_exc[:, :] = W
 
 
-    ''' - - E1 and E2 to I synapses - - '''
+    ''' - - E1 and E2 to I synapses (adaptive) - - '''
     syn_E1_I = Synapses(E1, I,
                 model = model_stdp,
                 on_pre = on_pre_stdp_exc,
@@ -247,7 +260,7 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
     syn_E2_I.w_exc[:, :] = 50   # pA, weight from I -> E2
 
 
-    ''' - - I to E1 and E2 synapses - - '''
+    ''' - - I to E1 and E2 synapses (adaptive) - - '''
     syn_I_E1 = Synapses(I, E1,
                 model = model_stdp,
                 on_pre = on_pre_stdp_exc,
@@ -266,14 +279,10 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
     syn_I_E2.w_exc[:, :] = 50   # pA, weight from I -> E1
     syn_I_E2.w_exc[:, :] = 50   # pA, weight from I -> E2
 
-    snap2 = tracemalloc.take_snapshot()
-    stats = snap2.compare_to(snap1, 'lineno')
-    print(f'Before Network Creation: {stats[0].size_diff / 10**6:.2f} MB')
 
     ''' - - simulation - - '''
     # set simulation parameters
     defaultclock.dt = dt*ms
-    # Monitors
 
     # Monitors for the autaptic network
     M_v_E1 = StateMonitor(E1, ['v', 'Syn_exc', 'Syn_inh', 'w'], record = True)
@@ -294,26 +303,21 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
     net = Network(E1, E2, I, aut_E1, aut_E2, aut_I, syn_E1, syn_E2, syn_E1_I, syn_I_E1, syn_E2_I, syn_I_E2, 
                     M_v_E1, M_v_E2, M_v_I, spikemon_E1, spikemon_E2, spikemon_I) 
     
-    snap2 = tracemalloc.take_snapshot()
-    stats = snap2.compare_to(snap1, 'lineno')
-    print(f'Before Simulation: {stats[0].size_diff / 10**6:.2f} MB')
+
     net.run(T*ms)
-    snap2 = tracemalloc.take_snapshot()
-    stats = snap2.compare_to(snap1, 'lineno')
-    print(f'After Simulation: {stats[0].size_diff / 10**6:.2f} MB')
 
     ''' - - - CALCULATE METRICS - - - '''
 
-    cols = ['I_inj', 'w_e1_e2', 'w_e2_e1', 'FT_distance', 'FT_EMD', 'ISI_distance', 'SPIKE_distance', 'SPIKE_synchrony', 'spike_directionality']
+    cols = ['e', 'f', 'tau', 'I_inj', 'W', 'FT_distance', 'FT_EMD', 'ISI_distance', 'SPIKE_distance', 'SPIKE_synchrony', 'spike_directionality']
     results_distance = pd.DataFrame(columns = cols)
-    isi_cols = ['neuron_number', 'I_inj', 'w_e1_e2', 'w_e2_e1', 'peak_isi', 'mean', 'std', 'count_sum', 'CV_isi', 'LV']
+    isi_cols = ['neuron_number', 'e', 'f', 'tau', 'I_inj', 'W', 'peak_isi', 'mean', 'std', 'count_sum', 'CV_isi', 'LV']
     results_isi_E1 = pd.DataFrame(columns = isi_cols)
     results_isi_E2 = pd.DataFrame(columns = isi_cols)
 
     # set values from the simulation
-    results_distance['I_inj'] = I1[:, 0]                   # Current into E1
-    results_distance['w_e1_e2'] = syn_E1.w_exc[:]         # Synapse weight from e1 to e2
-    results_distance['w_e2_e1'] = syn_E2.w_exc[:]         # Synapse weight from e2 to e1
+    results_distance['I_inj'] = I_E[:, 0]             # Current into E1
+    results_distance['W'] = W                       # Synapse weight from e1 to e2
+
 
     ## Get spike trains
     spike_train_E1 = spikemon_E1.spike_trains()
@@ -353,9 +357,11 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
 
     # store the ISI summaries here
     # neuron E1
+    e_lst_E1 = []
+    f_lst_E1 = []
+    tau_lst_E1 = []
     I_inj_lst_E1 = []
-    w_e1_e2_lst_E1 = []
-    w_e2_e1_lst_E1 = []
+    W_lst_E1 = []
     neuron_number_E1 = []
     peak_isi_E1 = []
     mean_E1 = []
@@ -365,9 +371,11 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
     LV_E1 = []
 
     # neuron E2
+    e_lst_E2 = []
+    f_lst_E2 = []
+    tau_lst_E2 = []
     I_inj_lst_E2 = []
-    w_e1_e2_lst_E2 = []
-    w_e2_e1_lst_E2 = []
+    W_lst_E2 = []
     neuron_number_E2 = []
     peak_isi_E2 = []
     mean_E2 = []
@@ -385,15 +393,10 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
         n_freq = len(freq)//2
         fft_E1, _ = calculate_FT(bin_E1[i, :], dt)
         fft_E2, _ = calculate_FT(bin_E2[i, :], dt)
-        # FT cutoffs
-        freq_high = 200 # Hz
-        idx_start = 3
-        idx_end = np.argmin(np.abs(freq[:n_freq] - freq_high))
-        # custom FT distance measure
-        FT_dist[i] = calculate_FT_diff(fft_E1[idx_start:idx_end], fft_E2[idx_start:idx_end], freq)
+        FT_dist[i] = calculate_FT_diff(fft_E1, fft_E2, freq)
 
-        # Earth mover's distance - calculated from the FT spectrum up to freq_high
-        FT_EMD[i] = wasserstein_distance(freq[idx_start:idx_end], freq[idx_start:idx_end], np.abs(fft_E1[idx_start:idx_end]), np.abs(fft_E2[idx_start:idx_end]))
+        # Earth mover's distance
+        FT_EMD[i] = wasserstein_distance(freq[:n_freq], freq[:n_freq], np.abs(fft_E1[:n_freq]), np.abs(fft_E2[:n_freq]))
 
         '''- - PYSPIKE metrics - - '''
         # create pyspike spike_trains
@@ -424,9 +427,11 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
 
         # append the data for each identified peak
         for j in range(len(results_E1)):        # loop over all the peaks in E1
-            I_inj_lst_E1.append(I1[i, 0])
-            w_e1_e2_lst_E1.append(syn_E1.w_exc[i])
-            w_e2_e1_lst_E1.append(syn_E2.w_exc[i])
+            e_lst_E1.append(e_val)
+            f_lst_E1.append(f_values[i])               # only append the f for that neuron 
+            tau_lst_E1.append(tau_val)
+            I_inj_lst_E1.append(INPUT_E)
+            W_lst_E1.append(W)
             neuron_number_E1.append(i)
             peak_isi_E1.append(results_E1[j]['peak_isi'])
             mean_E1.append(results_E1[j]['mean'])
@@ -436,9 +441,11 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
             LV_E1.append(local_variation_E1[i])
 
         for k in range(len(results_E2)):        # loop over all the peaks in E2
-            I_inj_lst_E2.append(I1[i, 0])
-            w_e1_e2_lst_E2.append(syn_E1.w_exc[i])
-            w_e2_e1_lst_E2.append(syn_E2.w_exc[i])
+            e_lst_E2.append(0.)                 # no autapse here
+            f_lst_E2.append(0.)
+            tau_lst_E2.append(0.)
+            I_inj_lst_E2.append(INPUT_E)
+            W_lst_E2.append(W)
             neuron_number_E2.append(i)
             peak_isi_E2.append(results_E2[k]['peak_isi'])
             mean_E2.append(results_E2[k]['mean'])
@@ -450,6 +457,9 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
 
 
     # append to dataframes, these are comparison metrics between both responses...
+    results_distance['e'] = e_val
+    results_distance['f'] = f_values
+    results_distance['tau'] = tau_val
     results_distance['FT_distance'] = FT_dist
     results_distance['FT_EMD'] = FT_EMD
     results_distance['ISI_distance'] = ISI_dist
@@ -459,10 +469,12 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
 
     # save the data in the ISI dictionaries...
     # E1
+    results_isi_E1['e'] = e_lst_E1
+    results_isi_E1['f'] = f_lst_E1
+    results_isi_E1['tau'] = tau_lst_E1
     results_isi_E1['neuron_number'] = neuron_number_E1
     results_isi_E1['I_inj'] = I_inj_lst_E1
-    results_isi_E1['w_e1_e2'] = w_e1_e2_lst_E1
-    results_isi_E1['w_e2_e1'] = w_e2_e1_lst_E1
+    results_isi_E1['W'] = W_lst_E1
     results_isi_E1['peak_isi'] = peak_isi_E1
     results_isi_E1['mean'] = mean_E1
     results_isi_E1['std'] = std_E1
@@ -471,10 +483,12 @@ def simulate(E1_neuron, E2_neuron, I_neuron, INPUT_E1, INPUT_E2, E1_TO_E2, E2_TO
     results_isi_E1['LV'] = LV_E1
 
     # E2
+    results_isi_E2['e'] = e_lst_E2
+    results_isi_E2['f'] = f_lst_E2
+    results_isi_E2['tau'] = tau_lst_E2
     results_isi_E2['neuron_number'] = neuron_number_E2
     results_isi_E2['I_inj'] = I_inj_lst_E2
-    results_isi_E2['w_e1_e2'] = w_e1_e2_lst_E2
-    results_isi_E2['w_e2_e1'] = w_e2_e1_lst_E2
+    results_isi_E2['W'] = W_lst_E2
     results_isi_E2['peak_isi'] = peak_isi_E2
     results_isi_E2['mean'] = mean_E2
     results_isi_E2['std'] = std_E2

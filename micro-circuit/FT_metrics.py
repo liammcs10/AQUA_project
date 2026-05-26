@@ -37,7 +37,7 @@ def calculate_FT(binary_spikes, dt, filter = None):
     '''
 
     if filter is None:
-        # if filter is none, calculate the spectrum on the binary time series
+        # if filter is none, calculate the spectrum on the binary spike time series
         # calculate FFT
         FFT = np.fft.fft(binary_spikes)
         # calculate corresponding frequencies
@@ -82,8 +82,8 @@ def calculate_FT_diff(FFT1, FFT2, FFT_freq, freq_cutoff = 100):
     sub_freq = FFT_freq[:cutoff_idx]
 
     # normalise each curve
-    sub_FFT1 /= sub_FFT1.sum()
-    sub_FFT2 /= sub_FFT2.sum()
+    sub_FFT1 /= np.linalg.norm(sub_FFT1)
+    sub_FFT2 /= np.linalg.norm(sub_FFT2)
 
     # difference
     diff = np.sum(np.abs(sub_FFT2 - sub_FFT1))
