@@ -18,6 +18,7 @@ from aqua.batchAQUA_general import batchAQUA
 from aqua.AQUA_general import AQUA
 from aqua.utils import * 
 from aqua.plotting_functions import *
+from aqua.stimulus import OU_current
 
 '''general imports''' 
 import numpy as np
@@ -105,10 +106,16 @@ def main():
     # autapse params
     e = 0.2
     tau = 2.0
-    f_vals = np.linspace(100, 450, 50)      # range of autapse parameters.
+    f_vals = np.linspace(10, 450, 100)      # range of autapse parameters.
 
-    # simulate the autaptic network
-    simulate(E_neuron, I_neuron, INPUT_E, W, e, f_vals, tau, "burst_analysis_test.pickle")
+    # simulate the autaptic network identical conditions (no noise)
+    print('- - SIMULATION 1 - - ')
+    simulate(E_neuron, I_neuron, INPUT_E, W, e, f_vals, tau, "burst_analysis_identical.pickle")
+
+    # simulate the autaptic network - different noise   
+    print('- - SIMULATION 2 - - ')
+    INPUT_NOISE = {'theta': 0.2, 'sigma': 5}
+    #simulate(E_neuron, I_neuron, INPUT_E, W, e, f_vals, tau, "burst_analysis_OU_noise.pickle", INPUT_NOISE)
 
 
     # Can now simulate networks with different aut apse types.
@@ -117,7 +124,7 @@ def main():
 
 
 
-def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, autapse_type = 'standard', t1 = None, t2 = None, I_peak = None):
+def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, INPUT_NOISE = {'theta': 0, 'sigma': 0}, autapse_type = 'standard', t1 = None, t2 = None, I_peak = None, autapse_mode = 'standard', p1 = None, p2 = None):
     """
     Quick analysis over parameters to see if the autapse extends the range of synchrony.
 
@@ -174,14 +181,28 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, au
     batch_E2.Initialise(x_start, t_start)
 
     # create the input current - STEP CURRENT
-    I_E = INPUT_E * np.ones((N_SIMS, N_iter))
+    I_E1 = INPUT_E * np.ones((N_SIMS, N_iter))
+    I_E2 = INPUT_E * np.ones((N_SIMS, N_iter))
+    #I_E2 = 150. * np.ones((N_SIMS, N_iter))
+
+    if INPUT_NOISE['sigma'] > 0:
+        theta = INPUT_NOISE['theta'] # ms
+        sigma = INPUT_NOISE['sigma']
+        I_noise1 = OU_current(N_iter, dt, INPUT_E, theta, I_E1[0, :], sigma)
+        I_noise2 = OU_current(N_iter, dt, INPUT_E, theta, I_E2[0, :], sigma)
+        I_E1 = np.full((N_SIMS, N_iter), fill_value = I_noise1)
+        I_E2 = np.full((N_SIMS, N_iter), fill_value = I_noise2)
+
 
     # create a Timed Arrays
-    IE_TA = TimedArray(values = I_E.T, dt = dt*ms, name = 'IE_TA')   
-
+    IE1_TA = TimedArray(values = I_E1.T, dt = dt*ms, name = 'IE1_TA')   
+    IE2_TA = TimedArray(values = I_E2.T, dt = dt*ms, name = 'IE2_TA') 
+    
     # convert to brian2 with the standard autapse model
-    E1, aut_E1 = batch_E1.meetBrian(stimulus_name = IE_TA, synapse_eq = syn_eq, autapse_type = autapse_type, t_a1 = t1, t_a2 = t2, I_peak = I_peak)
-    E2, aut_E2 = batch_E2.meetBrian(stimulus_name = IE_TA, synapse_eq = syn_eq)     # no autapse (defaults to standard)
+    E1, aut_E1 = batch_E1.meetBrian(stimulus_name = IE1_TA, synapse_eq = syn_eq, 
+                                    autapse_type = autapse_type, t_a1 = t1, t_a2 = t2, I_peak = I_peak,     # autapse waveform
+                                    autapse_mode = autapse_mode, p1 = p1, p2 = p2)                          # randomise autapse delivery
+    E2, aut_E2 = batch_E2.meetBrian(stimulus_name = IE2_TA, synapse_eq = syn_eq)                            # no autapse (defaults to standard)
 
 
     ''' - - - define the inhibitory neuron - - - '''
@@ -194,8 +215,8 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, au
     batch_I.Initialise(x_start, t_start)
 
     # input current will be just subthreshold
-    threshold, _ = batch_I.get_threshold(idx = 0)
-    # threshold = 71.26
+    #threshold, _ = batch_I.get_threshold(idx = 0)
+    threshold = 71.26
     print(f"THRESHOLD = {threshold}")
     I_inh = np.array((threshold - THRESHOLD_OFFSET)*np.ones((N_SIMS, N_iter)))
     I_inhTA = TimedArray(values = I_inh.T, dt = dt*ms, name = 'I_inhTA')
@@ -306,17 +327,12 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, au
 
     net.run(T*ms)
 
+
     ''' - - - CALCULATE METRICS - - - '''
 
-    cols = ['e', 'f', 'tau', 'I_inj', 'W', 'FT_distance', 'FT_EMD', 'ISI_distance', 'SPIKE_distance', 'SPIKE_synchrony', 'spike_directionality']
-    results_distance = pd.DataFrame(columns = cols)
-    isi_cols = ['neuron_number', 'e', 'f', 'tau', 'I_inj', 'W', 'peak_isi', 'mean', 'std', 'count_sum', 'CV_isi', 'LV']
-    results_isi_E1 = pd.DataFrame(columns = isi_cols)
-    results_isi_E2 = pd.DataFrame(columns = isi_cols)
-
-    # set values from the simulation
-    results_distance['I_inj'] = I_E[:, 0]             # Current into E1
-    results_distance['W'] = W                       # Synapse weight from e1 to e2
+    cols = ['sim_number', 'neuron_label', 'e', 'f', 'tau', 'I_inj', 'W', 'FT_distance', 'FT_EMD', 'SPIKE_distance',
+            'SPIKE_synchrony', 'spike_directionality', 'schreiber similarity', 'peak_isi', 'peak_number', 'mean', 'std', 'count_sum', 'CV_isi', 'LV']
+    results_df = pd.DataFrame(columns = cols)
 
 
     ## Get spike trains
@@ -347,45 +363,49 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, au
 
     edges = [0, T]     # edges for pyspike
 
-    # store the distance metrics here
-    FT_dist = np.zeros(N_SIMS)
-    FT_EMD = np.zeros(N_SIMS)
-    ISI_dist = np.zeros(N_SIMS)
-    SPIKE_dist = np.zeros(N_SIMS)
-    SPIKE_synch = np.zeros(N_SIMS)
-    spike_directionality = np.zeros(N_SIMS)
 
-    # store the ISI summaries here
-    # neuron E1
-    e_lst_E1 = []
-    f_lst_E1 = []
-    tau_lst_E1 = []
-    I_inj_lst_E1 = []
-    W_lst_E1 = []
-    neuron_number_E1 = []
-    peak_isi_E1 = []
-    mean_E1 = []
-    std_E1 = []
-    count_sum_E1 = []
-    CV_isi_E1 = []
-    LV_E1 = []
+    # define and store the outputs in a list here
+    FT_dist = []
+    FT_EMD = []
+    SPIKE_dist = []
+    SPIKE_synch = []
+    spike_directionality = []
+    schreiber_sim = []
+    neuron_label = []
+    e_lst = []
+    f_lst = []
+    tau_lst = []
+    I_inj_lst = []
+    W_lst = []
+    simulation_number = []
+    peak_isi = []
+    peak_num = []
+    mean = []
+    std = []
+    count_sum = []
+    CV_isi = []
+    LV = []
 
-    # neuron E2
-    e_lst_E2 = []
-    f_lst_E2 = []
-    tau_lst_E2 = []
-    I_inj_lst_E2 = []
-    W_lst_E2 = []
-    neuron_number_E2 = []
-    peak_isi_E2 = []
-    mean_E2 = []
-    std_E2 = []
-    count_sum_E2 = []
-    CV_isi_E2 = []
-    LV_E2 = []
+    ''' - - - SAVE MEMBRANE TRACES - - - '''
+    trace_dict = {}
+    trace_dict['e'] = e_val
+    trace_dict['f'] = f_values
+    trace_dict['tau'] = tau_val
+    trace_dict['time'] = M_v_E1.t/ms
+    trace_dict['X_E1'] = M_v_E1.v
+    trace_dict['X_E2'] = M_v_E2.v
+    trace_dict['I_E1'] = I_E1
+    trace_dict['I_E2'] = I_E2
+    trace_dict['spikes_E1'] = spikes_E1
+    trace_dict['spikes_E2'] = spikes_E2
+
+    # SAVE TO PICKLE
+    filename = outfile[:-7] + 'TRACES' + outfile[-7:]
+    with open(filename, 'wb') as file:
+        pickle.dump(trace_dict, file)
 
 
-    for i in range(N_SIMS):
+    for i in range(N_SIMS):     # loop over each neuron setting
 
         '''FT distance'''
         # calculate FFT with no filter
@@ -393,28 +413,26 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, au
         n_freq = len(freq)//2
         fft_E1, _ = calculate_FT(bin_E1[i, :], dt)
         fft_E2, _ = calculate_FT(bin_E2[i, :], dt)
-        FT_dist[i] = calculate_FT_diff(fft_E1, fft_E2, freq)
 
-        # Earth mover's distance
-        FT_EMD[i] = wasserstein_distance(freq[:n_freq], freq[:n_freq], np.abs(fft_E1[:n_freq]), np.abs(fft_E2[:n_freq]))
+        # calculate the distance metrics once here. 
+        ''' custom FT distance '''
+        FT_distance = calculate_FT_diff(fft_E1, fft_E2, freq)
+        ''' Earth mover's distance '''
+        FT_wasserstein = wasserstein_distance(freq[:n_freq], freq[:n_freq], np.abs(fft_E1[:n_freq]), np.abs(fft_E2[:n_freq]))
 
         '''- - PYSPIKE metrics - - '''
         # create pyspike spike_trains
         spk_E1 = spk.SpikeTrain(spikes_E1[i, :], edges)
         spk_E2 = spk.SpikeTrain(spikes_E2[i, :], edges)
 
-        '''- - ISI distance - -'''
-        ISI_dist[i] = spk.isi_profile(spk_E1, spk_E2).avrg()
-
         '''- - SPIKE distance - -'''
-        SPIKE_dist[i] = spk.spike_profile(spk_E1, spk_E2).avrg()
-
+        SPIKE_distance = spk.spike_profile(spk_E1, spk_E2).avrg()
         '''- - SPIKE synchrony - -'''
-        SPIKE_synch[i] = spk.spike_sync_profile(spk_E1, spk_E2).avrg()
-
+        SPIKE_synchrony = spk.spike_sync_profile(spk_E1, spk_E2).avrg()
         '''- - SPIKE directionality - -'''
-        spike_directionality[i] = spk.spike_directionality(spk_E1, spk_E2)
-
+        spike_direct = spk.spike_directionality(spk_E1, spk_E2)
+        '''- - Schreiber Similarity - -'''
+        schreiber = schreiber_similarity(bin_E1[i], bin_E2[i], sigma = 15, dt = dt)
 
         '''- - ISI histogram metrics - -'''
         bins = 100
@@ -425,97 +443,90 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, au
         results_E1 = analyze_isi_peaks(counts_E1, bin_edges_E1)
         results_E2 = analyze_isi_peaks(counts_E2, bin_edges_E2)
 
+        ''' LOOP THROUGH ALL THE NEURONS AND APPEND TO EACH DATA LIST'''
         # append the data for each identified peak
         for j in range(len(results_E1)):        # loop over all the peaks in E1
-            e_lst_E1.append(e_val)
-            f_lst_E1.append(f_values[i])               # only append the f for that neuron 
-            tau_lst_E1.append(tau_val)
-            I_inj_lst_E1.append(INPUT_E)
-            W_lst_E1.append(W)
-            neuron_number_E1.append(i)
-            peak_isi_E1.append(results_E1[j]['peak_isi'])
-            mean_E1.append(results_E1[j]['mean'])
-            std_E1.append(results_E1[j]['std'])
-            count_sum_E1.append(results_E1[j]['count_sum'])
-            CV_isi_E1.append(results_E1[j]['std']/results_E1[j]['mean'])
-            LV_E1.append(local_variation_E1[i])
+            simulation_number.append(i)
+            neuron_label.append('E1')
+            e_lst.append(e_val)
+            f_lst.append(f_values[i])               # only append the f for that neuron 
+            tau_lst.append(tau_val)
+            I_inj_lst.append(INPUT_E)
+            W_lst.append(W)
+            peak_isi.append(results_E1[j]['peak_isi'])
+            peak_num.append(j+1)
+            mean.append(results_E1[j]['mean'])
+            std.append(results_E1[j]['std'])
+            count_sum.append(results_E1[j]['count_sum'])
+            CV_isi.append(results_E1[j]['std']/results_E1[j]['mean'])
+            LV.append(local_variation_E1[i])
+            # append distance measures
+            FT_dist.append(FT_distance)
+            FT_EMD.append(FT_wasserstein)
+            SPIKE_dist.append(SPIKE_distance)
+            SPIKE_synch.append(SPIKE_synchrony)
+            spike_directionality.append(spike_direct)
+            schreiber_sim.append(schreiber)
+
 
         for k in range(len(results_E2)):        # loop over all the peaks in E2
-            e_lst_E2.append(0.)                 # no autapse here
-            f_lst_E2.append(0.)
-            tau_lst_E2.append(0.)
-            I_inj_lst_E2.append(INPUT_E)
-            W_lst_E2.append(W)
-            neuron_number_E2.append(i)
-            peak_isi_E2.append(results_E2[k]['peak_isi'])
-            mean_E2.append(results_E2[k]['mean'])
-            std_E2.append(results_E2[k]['std'])
-            count_sum_E2.append(results_E2[k]['count_sum'])
-            CV_isi_E2.append(results_E2[k]['std']/results_E2[k]['mean'])
-            LV_E2.append(local_variation_E2[k])
-        
+            simulation_number.append(i)
+            neuron_label.append('E2')
+            e_lst.append(e_val)                 # e of the corresponding autaptic neuron
+            f_lst.append(f_values[i])           # f of the corresponding autaptic neuron          
+            tau_lst.append(tau_val)             # tau of the corresponding autaptic neuron
+            I_inj_lst.append(INPUT_E)
+            W_lst.append(W)
+            peak_isi.append(results_E2[k]['peak_isi'])
+            peak_num.append(k+1)
+            mean.append(results_E2[k]['mean'])
+            std.append(results_E2[k]['std'])
+            count_sum.append(results_E2[k]['count_sum'])
+            CV_isi.append(results_E2[k]['std']/results_E2[k]['mean'])
+            LV.append(local_variation_E2[k])
+            # append distance measures
+            FT_dist.append(FT_distance)
+            FT_EMD.append(FT_wasserstein)
+            SPIKE_dist.append(SPIKE_distance)
+            SPIKE_synch.append(SPIKE_synchrony)
+            spike_directionality.append(spike_direct)
+            schreiber_sim.append(schreiber)
 
 
     # append to dataframes, these are comparison metrics between both responses...
-    results_distance['e'] = e_val
-    results_distance['f'] = f_values
-    results_distance['tau'] = tau_val
-    results_distance['FT_distance'] = FT_dist
-    results_distance['FT_EMD'] = FT_EMD
-    results_distance['ISI_distance'] = ISI_dist
-    results_distance['SPIKE_distance'] = SPIKE_dist
-    results_distance['SPIKE_synchrony'] = SPIKE_synch
-    results_distance['spike_directionality'] = spike_directionality
-
-    # save the data in the ISI dictionaries...
-    # E1
-    results_isi_E1['e'] = e_lst_E1
-    results_isi_E1['f'] = f_lst_E1
-    results_isi_E1['tau'] = tau_lst_E1
-    results_isi_E1['neuron_number'] = neuron_number_E1
-    results_isi_E1['I_inj'] = I_inj_lst_E1
-    results_isi_E1['W'] = W_lst_E1
-    results_isi_E1['peak_isi'] = peak_isi_E1
-    results_isi_E1['mean'] = mean_E1
-    results_isi_E1['std'] = std_E1
-    results_isi_E1['count_sum'] = count_sum_E1
-    results_isi_E1['CV_isi'] = CV_isi_E1
-    results_isi_E1['LV'] = LV_E1
-
-    # E2
-    results_isi_E2['e'] = e_lst_E2
-    results_isi_E2['f'] = f_lst_E2
-    results_isi_E2['tau'] = tau_lst_E2
-    results_isi_E2['neuron_number'] = neuron_number_E2
-    results_isi_E2['I_inj'] = I_inj_lst_E2
-    results_isi_E2['W'] = W_lst_E2
-    results_isi_E2['peak_isi'] = peak_isi_E2
-    results_isi_E2['mean'] = mean_E2
-    results_isi_E2['std'] = std_E2
-    results_isi_E2['count_sum'] = count_sum_E2
-    results_isi_E2['CV_isi'] = CV_isi_E2
-    results_isi_E2['LV'] = LV_E2
+    results_df['sim_number'] = simulation_number
+    results_df['noise_theta'] = INPUT_NOISE['theta']
+    results_df['noise_sigma'] = INPUT_NOISE['sigma']
+    results_df['neuron_label'] = neuron_label
+    results_df['e'] = e_lst
+    results_df['f'] = f_lst
+    results_df['tau'] = tau_lst
+    results_df['I_inj'] = I_inj_lst
+    results_df['W'] = W_lst
+    results_df['FT_distance'] = FT_dist
+    results_df['FT_EMD'] = FT_EMD
+    results_df['SPIKE_distance'] = SPIKE_dist
+    results_df['SPIKE_synchrony'] = SPIKE_synch
+    results_df['spike_directionality'] = spike_directionality
+    results_df['schreiber similarity'] = schreiber_sim
+    results_df['peak_isi'] = peak_isi
+    results_df['peak_number'] = peak_num
+    results_df['mean'] = mean
+    results_df['std'] = std
+    results_df['count_sum'] = count_sum
+    results_df['CV_isi'] = CV_isi
+    results_df['LV'] = LV
+    results_df['num_peaks'] = results_df.groupby(['sim_number', 'neuron_label'])['neuron_label'].transform('count')
 
 
     # save the distance metrics
-    filename_dist = outfile[:-7] + "DIST" + outfile[-7:]
-    with open(filename_dist, 'wb') as file:
-        pickle.dump(results_distance, file)
+    with open(outfile, 'wb') as file:
+        pickle.dump(results_df, file)
 
-    # save the E1 ISI metrics
-    filename_e1 = outfile[:-7] + "ISI_E1" + outfile[-7:]
-    with open(filename_e1, 'wb') as file:
-        pickle.dump(results_isi_E1, file)
-
-    # save the E2 ISI metrics
-    filename_e2 = outfile[:-7] + "ISI_E2" + outfile[-7:]
-    with open(filename_e2, 'wb') as file:
-        pickle.dump(results_isi_E2, file)
 
     gc.collect()
 
 
-    
 
 if __name__ == "__main__":
     main()

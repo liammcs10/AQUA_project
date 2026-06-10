@@ -1,0 +1,41 @@
+
+QUESTION:
+ - Does the behaviour change due to the autapse affect the micro-circuit properties?
+ - Can the autaptic neuron start controlling the network output? E.g. affecting synchrony, entrainment, regularity?
+
+METHODS:
+ - Identical networks with different autapse strengths... Is there a network transition at the autapse bifurcation point? 
+        - - - - YES - - - -  
+ - Identical network with different noise values? (So that each neuron is slightly offset from the other...)
+ - Different driving currents?
+ - Can also vary the form of the autapse (poisson spike train, step currents, biexponential, etc...) 
+        Where do results become essentially identical? What are the important factors? Can the job be done by anything other than an autapse?
+        -> Compare F-I curves directly?
+        -> Firing rate vs. driving frequency? (either poisson spikes or actual sinusoid...)
+
+
+* NEED BETTER METRICS?
+ - See autapse paper on regularity - what is the metric used here?
+ - Synchrony metrics?
+
+
+FINDINGS:
+
+identical network: I_inj = 200, noise = 0, E-E synapse = 56
+        - The network starts off highly synchronised at low f-values - Likely due to being under identical conditions...
+        - As the neuron transitions to bursting (f > ~200pA) the neurons DEsynchronize considerably...
+        - There is an odd period of spike_directionality before the bifurcation... DESYNCH seems to happen at
+        the point where this breaks down.
+        - This actually seems to happen slightly before the bursting transition....
+
+
+Test 200 network: I_inj1 = 200, I_inj2 = 150, E-E syn = 56
+       - E1 gets a significantly stronger driving current
+       - Here synchrony IMPROVES drastically after entering the bursting region
+       - This happens exactly at the bursting region
+       - Also drastic improvement in CV_isi for all neurons
+
+NOISE: see identical, theta = 0.2, sigma = 5 pA
+       - results are consistent with the identical no noise scenario
+       - Repeat runs?
+       
