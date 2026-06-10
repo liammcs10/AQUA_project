@@ -27,7 +27,6 @@ import warnings
 warnings.filterwarnings("ignore", module = "stumpy")
 
 
-
 import aqua
 
 from aqua.batchAQUA_general import batchAQUA
@@ -50,10 +49,31 @@ sns.set_theme()
 from changepoynt.algorithms.fluss import FLUSS
 from changepoynt.visualization.score_plotting import plot_data_and_score
 
+import stumpy
+from joblib import Parallel, delayed
+
+
 
 # neuron model (RS integrator)
 RS = {'name': 'RS_ref', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
      'a': 0.03, 'b': -2, 'c': -50, 'd': 100, 'e': 0., 'f': 0., 'tau': 0.}
+
+def process_single_row(row_idx, data_matrix, window_size, dt):
+    '''
+    Computes the matrix profile on a single row and returns the CAC
+    '''
+    row_data = data_matrix[row_idx, 0, :]
+
+    mat_prof = stumpy.stump(row_data, m = window_size)
+
+    arc_crossings, _ = stumpy.fluss(mat_prof[:, 1], L = window_size, n_regimes = 1)
+
+    score = 1 - arc_crossings
+
+    CAC = np.max(score)
+    CP = np.argmax(score)*dt
+
+    return (CAC, CP)
 
 
 
@@ -69,29 +89,34 @@ def main():
     '''
 
     # for now only vary the peak autapse current? 
-    f_values = np.linspace(100, 350, 15)
+    f_values = np.linspace(0, 300, 5) # 15
+    f_values = np.array([0, 100, 150, 200, 220, 240, 260, 280, 300, 350, 400])
+    print(f_values)
 
     # height of the change point
     #d_H = np.linspace(0, 50, 10)
-    d_H = np.linspace(0, 5, 10)
+    #d_H = np.linspace(0, 5, 10)
+    d_H = np.array([0, 1, 2, 3, 4, 5, 10, 12, 15, 18, 20, 25, 30, 40, 50])
 
     # noise variance 
-    #var = np.linspace(0, 50, 5)
-    var = np.array([0])
+    var = np.linspace(0, 50, 5)
+    #var = np.array([0])
 
     # FLUSS window size (in time steps)
     window = 300
     print(f"WINDOW: {window}")
 
-    outfile = 'CPA_test_.pickle'
-    simulate(RS, f_values, d_H, var, window, outfile)
+    N_repeats = 100
+
+    outfile = 'CPA_data_N100.pickle'
+    simulate(RS, f_values, d_H, var, window, N_repeats, outfile)
 
 
 
 
 
 
-def simulate(model, f_values, d_H, var, window, outfile):
+def simulate(model, f_values, d_H, var, window, N_repeats, outfile):
     """
     Initialise and run a large network with different parameter configurations. 
     Saves data directly to then be imported and processed by the other functions.
@@ -104,7 +129,7 @@ def simulate(model, f_values, d_H, var, window, outfile):
 
     # create parameter dictionary
     params = []
-    params.append(model)    # add the non-autaptic neuron
+    #params.append(model)    # add the non-autaptic neuron
     e = 0.2     # /ms
     tau = 2.0   # ms
 
@@ -115,86 +140,98 @@ def simulate(model, f_values, d_H, var, window, outfile):
         temp_dict['f'] = np.round(f, 2)
         params.append(temp_dict)
 
+    df = pd.DataFrame(params)
+    f_vals = df['f'].to_numpy()
+
     N_neurons = len(params)
-    print(f"N_neurons: {N_neurons}")
 
     # Create the different changepoint currents. The changepoint will be exactly at the halfway point
     N_sims = N_neurons * len(d_H) * len(var)
-    print(f"N_SIMS: {N_sims}")
 
     I_0 = 60    # pA, initial driving current
     changepoint = 1500 # ms
+    noise_rate = 50 # Hz
+    noise_steps = int(1/noise_rate * (1000/dt))
+    num_unique = N_iter // noise_steps      # number of random numbers to sample
     I_inj = np.zeros((N_sims, N_iter))
     N_p_var = N_neurons * len(d_H)  # number of iterations per var
-    sim_params = []
-    for l, v in enumerate(var):
-        for m, h in enumerate(d_H):
-            step = np.array([step_current(N_iter, dt, y_0 = I_0, delay = changepoint, I_h = I_0 + h) for i in range(N_neurons)])
-            WN = np.random.normal(loc = 0.0, scale = np.sqrt(v), size = (N_iter))
-            step_w_noise = step + WN
-            idx = l * N_p_var + m * N_neurons
-            I_inj[idx:idx+N_neurons, :] = step_w_noise
-            sim_params.append(params)
-    sim_params = list(np.array(sim_params).flatten())
-    print(sim_params[:5])
-    params_df = pd.DataFrame(sim_params)
-    
-    print(f"SIM_PARAMS: {len(sim_params)}")
-
-    print(params_df.head())
-
-    # start values        
-    x_start = np.full((N_sims, 3), fill_value = np.array([-60, 0, 0]))
-    t_start = np.zeros(N_sims)
 
 
-    # create batch and initialise
-    batch = batchAQUA(params_df)
-    batch.Initialise(x_start, t_start)
-
-    # simulate
-    X, t, spikes =  batch.update_batch(dt, N_iter, I_inj)
-
-
-    # Now need to process the outputs using the FLUSS algorithm...
     '''
     Target output:
         DataFrame:  'var', 'H', 'f', 'window', 'peak CAC', 'estimated CP'
     
     Analysis is re-run for each window size (outer loop)
-
-
     '''
-    f_values = np.insert(f_values, 0, 0.)
-    cols = ['ISI_TS', 'variance', 'step_height', 'autapse f', 'FLUSS window', 'CAC', 'change point']
+    cols = ['N', 'variance', 'step_height', 'autapse f', 'FLUSS window', 'CAC', 'change point']
     data_df = pd.DataFrame(data = [], columns = cols)
 
-    ISI_trace = get_ISI_time_series(spikes, N_iter, dt)
 
-    row = 0
+    for iter in range(N_repeats):
+        sim_params = []
+        for l, v in enumerate(var):
+            for m, h in enumerate(d_H):
+                step = np.array([step_current(N_iter, dt, y_0 = I_0, delay = changepoint, I_h = I_0 + h) for i in range(N_neurons)])
+                unique_samples = np.random.normal(loc = 0.0, scale = np.sqrt(v), size = num_unique)
+                WN = np.repeat(unique_samples, noise_steps)
+                step_w_noise = step + WN
+                idx = l * N_p_var + m * N_neurons
+                I_inj[idx:idx+N_neurons, :] = step_w_noise
+                sim_params.append(params)
+        sim_params = list(np.array(sim_params).flatten())
+        params_df = pd.DataFrame(sim_params)
 
-    # initialise the analyser
-    fluss = FLUSS(window_length = window)
+        #print(f"SIM_PARAMS: {len(sim_params)}")
 
-    for v in tqdm(var):
-        for h in d_H:
-            for f in f_values:
+        # start values        
+        x_start = np.full((N_sims, 3), fill_value = np.array([-60, 0, 0]))
+        t_start = np.zeros(N_sims)
 
-                # Run analysis on membrane potential
-                score = fluss.transform(X[row, 0, :])   # fluss on membrane potential
-                CAC = np.max(score)
-                change_time = np.argmax(score)*dt   # in ms
-                df = pd.DataFrame(data = [[False, v, h, f, window, CAC, change_time]], columns = cols)
-                data_df = pd.concat([data_df, df], axis = 0, ignore_index = True)
-                
-                # Run on the ISI time series
-                score_isi = fluss.transform(ISI_trace[row, :])
-                CAC_isi = np.max(score_isi)
-                change_time_isi = np.argmax(score_isi)*dt
-                df_isi = pd.DataFrame(data = [[True, v, h, f, window, CAC_isi, change_time_isi]], columns = cols)
-                data_df = pd.concat([data_df, df_isi], axis = 0, ignore_index = True)
 
-                row += 1
+        # create batch and initialise
+        batch = batchAQUA(params_df)
+        batch.Initialise(x_start, t_start)
+
+        # simulate
+        X, t, spikes =  batch.update_batch(dt, N_iter, I_inj)
+
+        # Now need to process the outputs using the FLUSS algorithm...
+        # print(f"N LOOPS: {len(var)*len(d_H)*len(f_values)}")
+        # print(f"ITER: {iter}")
+        
+        # calculate the arc crossings using parallel joblib functionality
+        num_rows = X.shape[0]
+        results = Parallel(n_jobs = -1)(
+            delayed(process_single_row)(row, X, window, dt) for row in range(num_rows)
+        )
+
+        N = len(results)
+        CAC = np.zeros(N)
+        CP = np.zeros(N)
+        for n, row in enumerate(results):
+            CAC[n] = row[0] 
+            CP[n] = row[1]
+        
+        row_num = 0
+        for v in tqdm(var):
+            for h in d_H:
+                for f in f_values:
+                    '''
+                    # Run analysis on membrane potential
+                    # score = fluss.transform(X[row, 0, :])   # FLUSS in changepoynt package
+                    # GPU optimised FLUSS in stumpy directly...
+                    mat_prof = stumpy.gpu_stump(X[row, 0, :], m = window)
+                    arc_crossings, _ = stumpy.fluss(mat_prof[:, 1], L = window, n_regimes = 1)
+                    score = 1 - arc_crossings
+
+                    CAC = np.max(score)
+                    change_time = np.argmax(score)*dt   # in ms
+                    '''
+
+                    df = pd.DataFrame(data = [[iter, v, h, f, window, CAC[row_num], CP[row_num]]], columns = cols)
+                    data_df = pd.concat([data_df, df], axis = 0, ignore_index = True)
+                    row_num += 1
+
                 
     print(data_df.head())
 
@@ -204,9 +241,7 @@ def simulate(model, f_values, d_H, var, window, outfile):
 
 
 
-
-
-def psychometric_curve(data, x, y, hue = 'autapse f', fig = None, ax = None, add_colorbar = True):
+def psychometric_curve(data, x, y, hue = 'autapse f', fig = None, ax = None, add_colorbar = True, colorbar_label = 'Autapse Strength'):
     '''
     Plot the psychometric curve for different autapse conditions
     
@@ -222,7 +257,8 @@ def psychometric_curve(data, x, y, hue = 'autapse f', fig = None, ax = None, add
     #palette['0.0'] = 'black'  # Your pre-defined color
 
     # 3. Plot
-    sns.lineplot(data=data, x=x, y=y, hue=hue, palette=cmap_name, ax = ax, legend = False)
+    sns.lineplot(data=data, x=x, y=y, hue=hue, palette=cmap_name, ax = ax, legend = False, 
+                 estimator = 'mean', errorbar = 'sd', err_style = 'band', alpha = 0.8)
     #ax.set_ylim((0, 1))
 
     if add_colorbar:
@@ -232,7 +268,7 @@ def psychometric_curve(data, x, y, hue = 'autapse f', fig = None, ax = None, add
 
         # Add the colorbar to the figure
         cbar = fig.colorbar(sm, ax=ax)
-        cbar.set_label('Autapse Strength')
+        cbar.set_label(colorbar_label)
 
     return fig, ax
 
@@ -242,6 +278,9 @@ def changepoint_distribution():
     Compare different estimates of the change point for different autapse conditions
     
     '''
+
+
+
 
 
 if __name__ == "__main__":

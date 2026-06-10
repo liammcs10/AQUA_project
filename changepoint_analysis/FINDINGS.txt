@@ -1,0 +1,41 @@
+
+Key points:
+  - We use the FLUSS algorithm to identify the change point. This is a lightweight, model-free estimate of the change point. 
+  It also comes with a CAC value which can be interpreted as a 'confidence' or 'amount of evidence'
+
+  - Important metrics: estimated change point time, CAC (or 'confidence')
+
+
+
+The autapse may change output firing patterns in such a way that the FLUSS algorithm can identify
+the change point from membrane potential data directly. 
+
+INITIAL FINDINGS:
+
+  - choice of noise affects things. If noise is varying too fast, it essentially isn't there.
+
+  CPA_data_N10.PICKLE
+    - 10 repeats for noise values. Noise is sampled at 10,000 Hz!
+    - There is a critical value of the autapse parameter where the change point detection is optimal
+    and performs better than other autapse parameter values. This is due to the step offering a transition from tonic -> bursting - PURELY COINCIDENCE.
+    - Area at this value reaches it maximum, equivalent to higher autapse strengths despite the decrease in activity corresponding to 
+    slightly higher step heights.
+    - This critical value aligns with the 'bursting' regime and is slightly above the experimentally recorded value. 
+  
+  CPA_data_N100.PICKLE
+    - 100 repeats for each noise value. Noise is now sampled at 50Hz!
+    - No longer the bump in performance at moderate autapse strengths. 
+    - Performance (AUC) increases up to moderate f, then decreases between 
+    f = {200-300} and increases again up to f = 350, then decreases...
+    - Something strange is going on at f = 400. This is due to the neuron being in a CHAOTIC regime
+    before the step and transitioning to tonic firing after - PURELY COINCIDENCE.
+    - Some neurons see a drop in performance despite a larger step height - This is due to long high-frequency 
+    transients after the step, the changepoint is then assigned to the end of this transient.
+
+
+METRICS:
+    - amount of confidence versus variance?
+    - how early is the changepoint time well estimated?
+    - somehow estimate the confidence of the change time estimate? Maybe by Combining CP and CAC??
+
+
