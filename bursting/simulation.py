@@ -124,7 +124,7 @@ def sim(args, conf):
     """ RUN THE ANALYSES BELOW - define functions at the end of this script/in a different script"""
     
     # Test 1 - gain modulation on the AQUA batch
-    # gain_modulation(params_df, conf)
+    gain_modulation(params_df, conf)
 
     # Test 2 - gain modulation on biexponential autapse in brian2
     gain_modulation_biexponential(params_df, conf)
@@ -279,7 +279,7 @@ def gain_modulation_biexponential(params_df, conf):
     print(f"N_sims: {N_sims}")
     # Need to scale up parameter dict to match N_sims
     sim_params = pd.DataFrame(data = [], columns = params_df.keys())
-    for i in range(conf["Gain"]["N_I"]):
+    for _ in range(conf["Gain"]["N_I"]):
         sim_params = pd.concat([sim_params, params_df], ignore_index = True)
 
     # biexponential autapse - fix rise time

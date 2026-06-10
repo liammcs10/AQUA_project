@@ -1,0 +1,23 @@
+SOME GENERAL FINDINGS:
+
+RS NEURONS:
+- For the RS neuron, the addition of an autapse may serve 
+to transition between RS and IB type firing. 
+- The autapse produces a 'bursting' regime in the steady steady_state
+- The autapse produces a region of high rate of change in the initial firing rate 
+as a function of driving current. 
+- These results seem robust for different RS models (integrator/resonator)
+- AUTAPTIC RS IS VERY SIMILAR TO NON-AUTAPTIC IB (ADJUSTED FOR DRIVING CURRENT).
+
+* Attentional mechanisms?
+
+IB NEURON:
+- The autapse extends and drastically increases the average firing rate of the neuron 
+in the bursting region in the F-I curve. 
+- The derivative of the initial firing rate curve doesn't seem to change with the 
+autapse, the curve is only shifted to the left (lower I).
+- Could the IB neuron then help maintain bursting/oscillations?
+- There might be a strange attractor formed for a specific set of autapse Parameters
+    (same values as the RS bifurcation...)
+
+* Oscillations?
