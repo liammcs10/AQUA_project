@@ -12,6 +12,8 @@ import brian2
 from tqdm import tqdm
 
 from scipy.signal import find_peaks, peak_prominences
+from scipy.ndimage import gaussian_filter
+
 
 
 def convert_to_biexponential_peak(net_current, t1, t2):
@@ -164,8 +166,9 @@ def rolling_VR_dist(spikes1, spikes2, filter, window = 500):
     
     Params
     - - - 
-    spikes1, spikes2:       array
+    spikes1, spikes2:       1d array
                             binary time series of spikes
+    filter:                 
     window:                 int
                             number of time steps per window
 
@@ -184,6 +187,84 @@ def rolling_VR_dist(spikes1, spikes2, filter, window = 500):
 
         #time_VR[t] = van_rossum_dist(spikes1[t+window//2:t+window], spikes2[t+window//2:t+window], filter)
         time_VR[t+window//2] = van_rossum_dist(s1_filtered[t:t+window], s2_filtered[t:t+window])
+    
+    return time_VR
+
+''' Add a Schreiber similarity measure here (Should be quite easy!)'''
+
+def schreiber_similarity(spikes1, spikes2, sigma = None, dt = None):
+    '''
+    Calculate the schreiber similarity for 2 binary spike trains
+
+    Params:
+        spikes#:        nd array
+                        binary time series representing spike times.
+        sigma:          std of the gaussian filter
+    
+    OUTPUT
+
+        schreiber:      float
+                        schreiber similarity metric for the provided time series
+    
+    '''
+    if (sigma is None) and (dt is None):    # if arguments are not passed, use the raw binary spike time series.
+        smooth_spike1 = spikes1
+        smooth_spike2 = spikes2
+    else:
+        smooth_spike1 = gaussian_filter(spikes1, sigma = sigma/dt)
+        smooth_spike2 = gaussian_filter(spikes2, sigma = sigma/dt)
+
+    # compute components of the schreiber measure
+    dot = np.dot(smooth_spike1, smooth_spike2)
+    norm1 = np.linalg.norm(smooth_spike1)
+    norm2 = np.linalg.norm(smooth_spike2)
+
+    # schreiber is the normalized dot-product
+    if (norm1 == 0.) or (norm2 == 0.):
+        schreiber = 0.
+    else:
+        schreiber = dot/(norm1*norm2)
+
+    return schreiber
+
+
+''' Add rolling schreiber...'''
+
+def rolling_schreiber(spikes1, spikes2, sigma = 1, dt = 1, window = 500):
+    '''
+    Returns the rolling schreiber similarity measure
+    
+    '''
+    assert len(spikes1) == len(spikes2), "syn1 and syn2 should be the same length"
+
+    T = len(spikes1)        # duration of the time series
+    time_schreiber = np.zeros(T)
+
+    # smooth spike trains before hand for a smoother output
+    smooth_spk1 = gaussian_filter(spikes1, sigma = sigma/dt)
+    smooth_spk2 = gaussian_filter(spikes2, sigma = sigma/dt)
+
+    for t in range(T - window):
+        time_schreiber[t+window//2] = schreiber_similarity(smooth_spk1[t:t+window], smooth_spk2[t:t+window])
+    
+    return time_schreiber
+
+
+def rolling_euclid_distance(x1, x2, window = 500):
+    '''
+    Calculate the rolling euclidean distance between 2 time series
+    
+    '''
+    assert len(x1) == len(x2), "syn1 and syn2 should be the same length"
+
+    T = len(x1) # duration of the time series
+
+    time_VR = np.zeros(T)
+
+    for t in range(T - window):
+
+        #time_VR[t] = van_rossum_dist(spikes1[t+window//2:t+window], spikes2[t+window//2:t+window], filter)
+        time_VR[t+window//2] = np.linalg.norm(x1[t:t+window] - x2[t:t+window])
     
     return time_VR
 
@@ -211,7 +292,7 @@ def analyze_isi_peaks(counts, bin_edges, prominence = None, distance = None):
     """
     if prominence is None and distance is None:
         # calculated to match the plot_ISI_w_peaks
-        prominence = 0.1*np.max(counts)
+        prominence = 0.45*np.max(counts)
         distance = 0.1*(len(bin_edges)-1)
 
 

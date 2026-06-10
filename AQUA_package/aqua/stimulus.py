@@ -8,7 +8,7 @@ e.g.
 
 """
 import numpy as np
-from scipy.signal import butter, sosfilt
+from scipy.signal import butter, sosfilt, sosfiltfilt
 
 
 

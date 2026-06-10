@@ -7,9 +7,9 @@ pyramidal cells: L2/3/5/6
 RS = {'name': 'RS', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
      'a': 0.03, 'b': -2, 'c': -50, 'd': 100, 'e': 0., 'f': 0., 'tau': 0.}    # Class 1
 
-     pyramidal cells: all layers, abundantly L5
-     IB = {'name': 'IB', 'C': 150, 'k': 1.2, 'v_r': -75, 'v_t': -45, 'v_peak': 50,
-          'a': 0.01, 'b': 5, 'c': -56, 'd': 130, 'e': 0., 'f': 0., 'tau': 0.}
+pyramidal cells: all layers, abundantly L5
+IB = {'name': 'IB', 'C': 150, 'k': 1.2, 'v_r': -75, 'v_t': -45, 'v_peak': 50,
+     'a': 0.01, 'b': 5, 'c': -56, 'd': 130, 'e': 0., 'f': 0., 'tau': 0.}
 
 pyramidal cells: L2-4, abundantly L3
 CH = {'name': 'CH', 'C': 100, 'k': 0.7, 'v_r': -60, 'v_t': -40, 'v_peak': 35,
@@ -242,7 +242,7 @@ class batchAQUA:
                                     if uniform, start and stop times of step current, respectively.
                 I_peak              if biexponential, peak current of the autapse
                                     if uniform, height of the step
-                p1, p2:             Parameters of each non-standard 'autapse_mode' distribution
+                p1, p2:             Parameters of each non-standard 'autapse_mode' type
                                     if mode = 'poisson' or 'erlang', p1 = decay constant (in ms), p2 = k_stages (p2 = 1 for 'poisson')
                                     if mode = 'normal', p1 = mean, p2 = std (both in ms)
                                     if mode = 'uniform', p1 = minimum, p2 = maximum (both in ms)

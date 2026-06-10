@@ -130,7 +130,6 @@ def plot_raster(spike_array, total_time, ax=None, **kwargs):
     
     Parameters:
     - spike_array: 2D numpy array (neurons x time_steps)
-    - dt: Timestep of the simulation
     - total_time: Total duration
     - ax: (Optional) Existing matplotlib axes object
     - **kwargs: Pass-through arguments for line styling (e.g., color, linewidth)
@@ -176,7 +175,7 @@ def plot_ISI_w_peaks(spike_times, bins = 50, x_range = (0, 100), fig = None, ax 
     # --- 3. Detect Peaks and Widths ---
     # height: minimum count to be considered a peak
     # distance: minimum number of bins between peaks
-    peaks, properties = find_peaks(counts, height=np.max(counts)*0.1, distance=0.1*bins)
+    peaks, properties = find_peaks(counts, height=np.max(counts)*0.5, distance=0.1*bins)
     results_half = peak_widths(counts, peaks, rel_height=0.5)
 
     # Mapping indices back to time units for plotting
@@ -209,6 +208,54 @@ def plot_ISI_w_peaks(spike_times, bins = 50, x_range = (0, 100), fig = None, ax 
     ax.set_xlabel('Interspike Interval (ms)')
     ax.set_ylabel('Frequency')
     ax.set_xlim(x_range)
+
+
+def plot_first_return_map(spike_times, burn_in=0, ax=None, **kwargs):
+    """
+    Produces a first return map of Inter-Spike Intervals (ISIs).
+    
+    Parameters:
+    - spike_times: List or array of timestamps.
+    - burn_in: Time threshold to ignore initial transients.
+    - ax: Optional matplotlib axes object to plot onto.
+    - **kwargs: Passed to ax.scatter (e.g., color, s, alpha).
+    """
+    # 1. Convert to numpy array for efficient filtering
+    spikes = np.asarray(spike_times)
+    steady_spikes = spikes[spikes >= burn_in]
+    
+    if len(steady_spikes) < 3:
+        print("Insufficient spikes for a return map.")
+        return ax
+
+    # 2. Calculate ISIs and Return Pairs
+    isis = np.diff(steady_spikes)
+    x = isis[:-1]
+    y = isis[1:]
+    
+    # 3. Handle Axes logic
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))
+    
+    # 4. Plotting
+    # Default styling if not provided in kwargs
+    kwargs.setdefault('c', 'teal')
+    kwargs.setdefault('alpha', 0.6)
+    kwargs.setdefault('s', 20)
+    
+    ax.scatter(x, y, **kwargs)
+    
+    # Add identity line
+    max_val = max(np.max(x), np.max(y))
+    ax.plot([0, max_val], [0, max_val], color='black', 
+            linestyle='--', alpha=0.3, label='ISI[n] = ISI[n+1]')
+    
+    ax.set_xlabel('ISI$_{n}$ (ms)')
+    ax.set_ylabel('ISI$_{n+1}$ (ms)')
+    ax.set_title("First Return Map")
+    ax.grid(True, alpha=0.3)
+    
+    return ax
 
 
 
