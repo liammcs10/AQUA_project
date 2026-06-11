@@ -471,7 +471,7 @@ def plot_bifurcation_I(spikes, I_range, steady_state = True, fig = None, ax = No
         
         ISI = np.diff(subSpikes)
         isi_vals, isi_counts = np.unique(np.round(ISI, decimals = 4), return_counts = True)
-        ax.scatter(I_range[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, c = 'black', s = 0.8, marker = "o", label = label)
+        ax.scatter(I_range[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, c = 'black', s = 0.8, marker = "o")
 
     return fig, ax
 
