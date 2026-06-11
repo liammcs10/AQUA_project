@@ -20,4 +20,14 @@ autapse, the curve is only shifted to the left (lower I).
 - There might be a strange attractor formed for a specific set of autapse Parameters
     (same values as the RS bifurcation...)
 
+- - - - - - - 
+
+FS interneurons
+
+
+
+LTS interneurons
+
+
+
 * Oscillations?

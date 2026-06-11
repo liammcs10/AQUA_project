@@ -100,7 +100,7 @@ def sim(args, conf):
         tau_std = np.log(1 + (tau_arr[1]**2/tau_arr[0]**2))
         tau_vals = np.random.Generator.lognormal(tau_mean, tau_std, int(tau_arr[2]))
 
-    
+    print(f'f values: {f_vals}')
     # calculate the number of neurons
     N_neurons = 1 + len(f_vals) * len(e_vals) * len(tau_vals)
     print(f"N_neurons: {N_neurons}")
@@ -122,7 +122,6 @@ def sim(args, conf):
     # We won't define the batch just yet as it may be more useful to have 
 
     """ RUN THE ANALYSES BELOW - define functions at the end of this script/in a different script"""
-    
     # Test 1 - gain modulation on the AQUA batch
     gain_modulation(params_df, conf)
 
@@ -135,7 +134,6 @@ def sim(args, conf):
 
 
 """ - - - - SIMULATION FUNCTIONS - - - - """
-
 def gain_modulation(params_df, conf):
     """
     Analysis of the effect of the autapse on gain modulation of the neuron. Step currents
@@ -179,8 +177,16 @@ def gain_modulation(params_df, conf):
 
 
     # somewhere to store the outputs
-    cols = ['e', 'f', 'tau', 'autapse current', 'autapse delay', 'I_h', 'F_instant', 'F_steady']
-    output_df = pd.DataFrame(data = [], columns = cols)     # will be a list of dictionaries
+    output_dict = {
+        'e': [],
+        'f': [],
+        'tau': [],
+        'autapse current': [],
+        'autapse delay': [],
+        'I_h': [],
+        'F_instant': [],
+        'F_steady': []
+    }
 
     # start looping over the simulations
     N_loops = N_sims // N_per_loop
@@ -204,7 +210,7 @@ def gain_modulation(params_df, conf):
         # simulate
         _, _, spikes = batch.update_batch(dt, N_iter, I_inj[idx_start:idx_end, :])
 
-        """ - - - from this point analyse from spike times and start building output df - - - """
+        """ - - - From this point analyse from spike times and start building output df - - - """
         # quantifying autapse values
         autapse_current = list(batch.get_net_autapse_currents())
         autapse_delay = list(batch.get_mean_autapse_delays())
@@ -212,20 +218,22 @@ def gain_modulation(params_df, conf):
         F_instant = get_F(spikes, instant = True)
         F_steady = get_F(spikes, instant = False)
 
+        # store the data
+        output_dict["e"].append(sim_params['e'][idx_start:idx_end].to_numpy())
+        output_dict["f"].append(sim_params['f'][idx_start:idx_end].to_numpy())
+        output_dict["tau"].append(sim_params['tau'][idx_start:idx_end].to_numpy())
+        output_dict["autapse current"].append(autapse_current)
+        output_dict["autapse delay"].append(autapse_delay)
+        output_dict["I_h"].append(I_inj[idx_start:idx_end, -1])
+        output_dict["F_instant"].append(F_instant)
+        output_dict["F_steady"].append(F_steady)
 
-        out_dict = {"e":   list(sim_params['e'][idx_start:idx_end]),
-                    "f":   list(sim_params['f'][idx_start:idx_end]),
-                    "tau": list(sim_params['tau'][idx_start:idx_end]),
-                    "autapse current": autapse_current,
-                    "autapse delay": autapse_delay,
-                    "I_h": list(I_inj[idx_start:idx_end, -1]),
-                    "F_instant": list(F_instant),
-                    "F_steady": list(F_steady)
-                    }
 
+    # flatten each entry in the output dictionary
+    for key in output_dict.keys():
+        output_dict[key] = np.hstack(output_dict[key])
 
-        small_df = pd.DataFrame(out_dict)   # convert dictionary to DataFrame
-        output_df = pd.concat([output_df, small_df])
+    output_df = pd.DataFrame(output_dict)
 
     # save the results dict as a pickle
     name = conf['Neuron']['name']
@@ -289,8 +297,16 @@ def gain_modulation_biexponential(params_df, conf):
     Aut_peak = np.array(sim_params['f'])      # peak current of the biexponential autapse
     
     # somewhere to store the outputs
-    cols = ['e', 'f', 'tau', 'autapse current', 'autapse delay', 'I_h', 'F_instant', 'F_steady']
-    output_df = pd.DataFrame(data = [], columns = cols)     # will be a list of dictionaries
+    output_dict = {
+        'e': [],
+        'f': [],
+        'tau': [],
+        'autapse current': [],
+        'autapse delay': [],
+        'I_h': [],
+        'F_instant': [],
+        'F_steady': []
+    }
 
     # start looping over the simulations
     N_loops = N_sims // N_per_loop
@@ -333,26 +349,29 @@ def gain_modulation_biexponential(params_df, conf):
 
         """ - - - from this point analyse from spike times and start building output df - - - """
         # quantifying autapse values -> don't correspond to biexponential autapse but still differentiate all neurons...
-        autapse_current = list(batch.get_net_autapse_current_biexponential(t1 = t_a1_arr[idx_start:idx_end], t2 = t_a2_arr[idx_start:idx_end], I_peak = Aut_peak[idx_start:idx_end]))
-        autapse_delay = list(batch.get_mean_autapse_delays())
+        autapse_current = np.array(batch.get_net_autapse_current_biexponential(t1 = t_a1_arr[idx_start:idx_end], t2 = t_a2_arr[idx_start:idx_end], I_peak = Aut_peak[idx_start:idx_end]))
+        autapse_delay = np.array(batch.get_mean_autapse_delays())
 
         # brian2 output needs to be converted here...
         F_instant = get_F(spikes, instant = True)
         F_steady = get_F(spikes, instant = False)
 
-        out_dict = {"e":   list(sim_params['e'][idx_start:idx_end]),
-                    "f":   list(sim_params['f'][idx_start:idx_end]),
-                    "tau": list(sim_params['tau'][idx_start:idx_end]),
-                    "autapse current": autapse_current,
-                    "autapse delay": autapse_delay,
-                    "I_h": list(I_inj[idx_start:idx_end, -1]),
-                    "F_instant": list(F_instant),
-                    "F_steady": list(F_steady)
-                    }
+
+        # store the data
+        output_dict["e"].append(sim_params['e'][idx_start:idx_end].to_numpy())
+        output_dict["f"].append(sim_params['f'][idx_start:idx_end].to_numpy())
+        output_dict["tau"].append(sim_params['tau'][idx_start:idx_end].to_numpy())
+        output_dict["autapse current"].append(autapse_current)
+        output_dict["autapse delay"].append(autapse_delay)
+        output_dict["I_h"].append(I_inj[idx_start:idx_end, -1])
+        output_dict["F_instant"].append(F_instant)
+        output_dict["F_steady"].append(F_steady)
 
 
-        small_df = pd.DataFrame(out_dict)   # convert dictionary to DataFrame
-        output_df = pd.concat([output_df, small_df])
+    for key in output_dict.keys():
+        output_dict[key] = np.hstack(output_dict[key])
+
+    output_df = pd.DataFrame(output_dict)
 
     # save the results dict as a pickle
     name = conf['Neuron']['name']
