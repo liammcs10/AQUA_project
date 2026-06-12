@@ -148,7 +148,6 @@ def plot_raster(spike_array, total_time, ax=None, **kwargs):
     for i in range(num_trains):
         spike_indices = np.where(spike_array[i, :] > 0)[0]
         spike_times = spike_array[i, spike_indices]
-        print(spike_times)
         
         # Plotting the spikes
         ax.vlines(spike_times, i, i + 0.8, color=color, linewidth=linewidth)
