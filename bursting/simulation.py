@@ -14,6 +14,7 @@ simulations relatively fast.
 
 """
 
+import sys
 
 from aqua.AQUA_general import AQUA
 from aqua.batchAQUA_general import *
@@ -100,7 +101,6 @@ def sim(args, conf):
         tau_std = np.log(1 + (tau_arr[1]**2/tau_arr[0]**2))
         tau_vals = np.random.Generator.lognormal(tau_mean, tau_std, int(tau_arr[2]))
 
-    print(f'f values: {f_vals}')
     # calculate the number of neurons
     N_neurons = 1 + len(f_vals) * len(e_vals) * len(tau_vals)
     print(f"N_neurons: {N_neurons}")
@@ -166,15 +166,19 @@ def gain_modulation(params_df, conf):
     delay = conf["Gain"]["delay"]
     y_0 = conf["Gain"]["y_0"]
     I_inj = np.array([step_current(N_iter, dt, y_0, delay, I_h) for I_h in I_range for n in range(N_neurons)])
+    print(f'I_inj: {len(I_inj)}')
 
     # number of simulations that ultimately need to be run
     N_sims = N_neurons * conf["Gain"]["N_I"]
     print(f"N_sims: {N_sims}")
     # Need to scale up parameter dict
-    sim_params = pd.DataFrame(data = [], columns = params_df.keys())
-    for i in range(conf["Gain"]["N_I"]):
+    sim_params = pd.DataFrame(data = params_df, columns = params_df.keys())
+    for i in range(conf["Gain"]["N_I"]-1):
         sim_params = pd.concat([sim_params, params_df], ignore_index = True)
 
+    print('- - - SIM PARAMS - - - ')
+    print(f'LEN: {len(sim_params)}')
+    print(sim_params.head())
 
     # somewhere to store the outputs
     output_dict = {
@@ -228,12 +232,18 @@ def gain_modulation(params_df, conf):
         output_dict["F_instant"].append(F_instant)
         output_dict["F_steady"].append(F_steady)
 
+        # check output_dict size
+        print(f"params_df is {sys.getsizeof(output_dict)/1000} kBytes")
 
     # flatten each entry in the output dictionary
     for key in output_dict.keys():
         output_dict[key] = np.hstack(output_dict[key])
 
     output_df = pd.DataFrame(output_dict)
+
+    print('- - - OUTPUT DF - - - ')
+    print(f'LEN: {len(output_df)}')
+    print(output_df['f'].unique())
 
     # save the results dict as a pickle
     name = conf['Neuron']['name']
