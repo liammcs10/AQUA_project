@@ -159,14 +159,17 @@ def gain_modulation(params_df, conf):
     T = float(conf["Gain"]["T"])
     dt = float(conf["Gain"]["dt"])
     N_iter = int(T/dt)
+    print(f'N_ITER: {N_iter}')
 
     # range of injected currents values
     I_range = np.linspace(conf["Gain"]["I_start"], conf["Gain"]["I_stop"], conf["Gain"]["N_I"])
     # build injected current array
     delay = conf["Gain"]["delay"]
     y_0 = conf["Gain"]["y_0"]
-    I_inj = np.array([step_current(N_iter, dt, y_0, delay, I_h) for I_h in I_range for n in range(N_neurons)])
-    print(f'I_inj: {len(I_inj)}')
+    I_heights = np.array([I_h for I_h in I_range for _ in range(N_neurons)])
+    #I_inj = np.array([step_current(N_iter, dt, y_0, delay, I_h) for I_h in I_range for n in range(N_neurons)])
+    print(f'I_heights: {len(I_heights)}')
+    print(f"I_heights is {sys.getsizeof(I_heights)/1000} kBytes")
 
     # number of simulations that ultimately need to be run
     N_sims = N_neurons * conf["Gain"]["N_I"]
@@ -178,6 +181,7 @@ def gain_modulation(params_df, conf):
 
     print('- - - SIM PARAMS - - - ')
     print(f'LEN: {len(sim_params)}')
+    print(f"sim_params is {sys.getsizeof(sim_params)/1000} kBytes")
     print(sim_params.head())
 
     # somewhere to store the outputs
@@ -194,6 +198,7 @@ def gain_modulation(params_df, conf):
 
     # start looping over the simulations
     N_loops = N_sims // N_per_loop
+    print(f'N LOOPS: {N_loops}')
     for n in range(N_loops):
         if n == N_loops - 1:
             N_in_loop = N_sims - (N_loops - 1)*N_per_loop
@@ -208,11 +213,16 @@ def gain_modulation(params_df, conf):
         x_start = np.full((N_in_loop, 3), fill_value = np.array([conf["Neuron"]["c"], 0, 0]))
         t_start = np.zeros(N_in_loop)
 
+        # create I_inj
+        I_inj = np.array([step_current(N_iter, dt, y_0, delay, I_h) for I_h in I_heights[idx_start:idx_end]])
+        print(f'I_inj: {np.shape(I_inj)}')
+        print(f"I_inj is {sys.getsizeof(I_inj)/1e9} Gb")
+
         # create batch
         batch = batchAQUA(sim_params[idx_start:idx_end])
         batch.Initialise(x_start, t_start)
         # simulate
-        _, _, spikes = batch.update_batch(dt, N_iter, I_inj[idx_start:idx_end, :])
+        spikes = batch.update_batch(dt, N_iter, I_inj, SAVE_ALL = False)
 
         """ - - - From this point analyse from spike times and start building output df - - - """
         # quantifying autapse values
