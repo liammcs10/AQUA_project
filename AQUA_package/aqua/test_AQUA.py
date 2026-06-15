@@ -11,13 +11,22 @@ Checks:
         - neuron with positive time delay
         - neuron with different time delay to the previous one
         - FS neuron
-    
+
+        
+- - - TO RUN PROPERLY - - - 
+$ conda activate aqua
+$ python -m unittest -v test_AQUA.py
+
+NOTE: don't use pytest, this will fail.
 """
 
 
 import numpy as np
-from .AQUA_general import AQUA
-from .batchAQUA_general import batchAQUA, pad_list
+import aqua
+from aqua.AQUA_general import AQUA
+from aqua.batchAQUA_general import *
+from aqua.utils import *
+from aqua.stimulus import *
 import unittest
 
 
@@ -76,7 +85,6 @@ class TestAQUA(unittest.TestCase):
         neuron_08.Initialise(x_start[0], t_start[0])
         cls.X_08, T_08, _ = neuron_08.update_RK2(dt, N_iter, I_inj[0, :])
 
-
         # FS neuron
         neuron_FS = AQUA(FS)
         neuron_FS.Initialise(x_start[0], t_start[0])
@@ -88,11 +96,11 @@ class TestAQUA(unittest.TestCase):
         t_half = np.array([T_NONE[cls.idx], T_0[cls.idx], T_05[cls.idx], T_08[cls.idx], T_FS[cls.idx]])
 
         w_prev = [cls.X_NONE[2, cls.idx-int(RS_NONE["tau"]/dt):cls.idx].tolist(), 
-                    cls.X_0[2, cls.idx-int(RS_0["tau"]/dt):cls.idx].tolist(), 
-                    cls.X_05[2, cls.idx-int(RS_05["tau"]/dt):cls.idx].tolist(), 
-                    cls.X_08[2, cls.idx-int(RS_08["tau"]/dt):cls.idx].tolist(), 
-                    cls.X_FS[2, cls.idx-int(FS["tau"]/dt):cls.idx].tolist()]
-        w_prev = pad_list(w_prev, pad_end = False)
+                  cls.X_0[2, cls.idx-int(RS_0["tau"]/dt):cls.idx].tolist(), 
+                  cls.X_05[2, cls.idx-int(RS_05["tau"]/dt):cls.idx].tolist(), 
+                  cls.X_08[2, cls.idx-int(RS_08["tau"]/dt):cls.idx].tolist(), 
+                  cls.X_FS[2, cls.idx-int(FS["tau"]/dt):cls.idx].tolist()]
+        w_prev = pad_list(w_prev, pad_value = 0.0, pad_end = False)
 
 
         # reinitialise neuron_05 halfway through. Needs an autapse here.

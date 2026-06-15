@@ -146,39 +146,39 @@ class batchAQUA:
         """
 
         delay_steps = (self.tau / dt).astype(int)
-        print(f'DELAY STEPS: {delay_steps}')
 
         if len(w_prev) == 0:
             w_prev = np.zeros(shape = (self.N_models, np.max(delay_steps))) # assume no prior spikes
 
         if SAVE_ALL:
-            ''' Saves the full set of neuron variables '''
+            ''' Saves the full set of neuron variables at all timepoints '''
             X = np.zeros((self.N_models, 3, N_iter), dtype = np.float64)
             X[:, :, 0] = self.x    # (N_models, 3, 1)
 
             T = np.linspace(0, (N_iter - 1) * dt, N_iter)
-        
+            delay_index = 1-delay_steps    # store the index of the autaptic delay
+            delay_index[delay_index > 0] = 0
+
         else:       # if not SAVE_ALL, need to store passed values up to tau_delay_largest
             TAU_LARGEST = np.max(delay_steps)
             X = np.zeros((self.N_models, 3, TAU_LARGEST), dtype = np.float64)
             X[:, :, -1] = self.x        # add the start value to the last element (essentially, the 'previous' timestep)
-            #print('- - - X - - -')
-            #print(np.round(X[1, :, :], 1))
+
+            delay_index = -delay_steps    # store the index of the autaptic delay
+            delay_index[delay_index >= 0] = -1      # where there is no delay, access previous tau value
+        
 
         # store spike times in an inhomogeneous array
         spike_times = [[] for _ in range(self.N_models)]
-        delay_index = 1-delay_steps    # store the index of the autaptic delay
-
 
         for n in tqdm(range(1, N_iter)):  # each neuron updated simultaneously with vectorization
-
             if n <= np.max(delay_steps): # early in sim
 
                 w_tau1 = np.zeros(self.N_models)                
                 tau_idx = np.nonzero(~(n <= delay_steps))                             # indices that need updating
                 prev_idx = np.nonzero(n <= delay_steps)                               # where delay_steps extends prior to the sim start
-                w_tau1[tau_idx] = X[tau_idx, 2, delay_index[tau_idx]-1]               # get w at the delay
-                w_tau1[prev_idx] = w_prev[prev_idx, delay_index[prev_idx]-1]
+                w_tau1[tau_idx] = X[tau_idx, 2, delay_index[tau_idx]]                 # get w at the delay
+                w_tau1[prev_idx] = w_prev[prev_idx, delay_index[prev_idx]]
                 
                 k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])                 # first RK param
                 
@@ -186,22 +186,23 @@ class batchAQUA:
                 bool_idx0 = np.nonzero(n <= delay_steps - 1)         # delay_steps extends before the sim start
                 bool_idx1 = np.nonzero(delay_steps == 0.0)           # case where there is no delay, need to estimate w_tau2
                 bool_idx2 = np.nonzero(n > delay_steps - 1)          # case where w_tau2 is has been calculated previously
-                w_tau2[bool_idx0] = w_prev[bool_idx0, n - delay_steps[bool_idx0]]
-                w_tau2[bool_idx1] = self.x[bool_idx1, 2] + k1[bool_idx1, 2] * dt            # update under first condition
-                w_tau2[bool_idx2] = X[bool_idx2, 2, delay_index[bool_idx2]]             # update under other condition
+                w_tau2[bool_idx0] = w_prev[bool_idx0, delay_index[bool_idx0]+1]
+                w_tau2[bool_idx2] = X[bool_idx2, 2, delay_index[bool_idx2]+1]                 # w_tau2 has already been calc'd and is in X
+                w_tau2[bool_idx1] = self.x[bool_idx1, 2] + k1[bool_idx1, 2] * dt            # autapse is instant, need to estimate it
 
                 k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])               # second RK param
 
             else: # all neurons are beyond delay steps
-                rows = np.arange(np.shape(X)[0])            # all rows
-                w_tau1 = X[rows, 2, delay_index - 1]                    # get w at the delay - should be shape (2, )
+                rows = np.arange(np.shape(X)[0])                                # all rows
+                w_tau1 = X[rows, 2, delay_index]                            # get w at the delay - should be shape (2, )
                 k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])           # first RK param
                 
                 w_tau2 = np.zeros(self.N_models)
-                bool_idx1 = np.nonzero(delay_steps == 0.0)[0]            
-                bool_idx2 = np.nonzero(delay_steps != 0.0)[0] 
+                bool_idx1 = np.nonzero(delay_steps == 0.0)            
+                bool_idx2 = np.nonzero(delay_steps != 0.0) 
                 w_tau2[bool_idx1] = self.x[bool_idx1, 2] + k1[bool_idx1, 2] * dt        # update under first condition
-                w_tau2[bool_idx2] = X[bool_idx2, 2, delay_index[bool_idx2]]         # update under other condition
+                w_tau2[bool_idx2] = X[bool_idx2, 2, delay_index[bool_idx2]+1]             # update under other condition
+                
                 k2 = self.neuron_model(self.x + dt * k1, w_tau2, I_inj[:, n])           # second RK param
 
             # update with RK2
@@ -209,13 +210,13 @@ class batchAQUA:
             self.t = self.t + dt
 
             # Check for spikes and reset
-            idx = np.nonzero(self.x[:, 0] >= self.v_peak) # 1 at indices that need updating
+            idx = np.nonzero(self.x[:, 0] >= self.v_peak)       # indices where there was a spike
             self.x[idx, 0] = self.c[idx]
             self.x[idx, 1] += self.d[idx]
             self.x[idx, 2] += self.f[idx]
             
             for i in idx[0]: # loop through the indices that have been updated
-                spike_times[i].append(self.t[i] - dt) # append the time of spike.
+                spike_times[i].append(self.t[i] - dt)    # append the time of spike (t has been updated at this point so -dt).
             
             if SAVE_ALL:
                 X[:, :, n] = self.x
@@ -224,7 +225,6 @@ class batchAQUA:
                 # append the updated x-vector to the start of the X array
                 X = np.roll(X, -1, axis = 2)
                 X[:, :, -1] = self.x      
-                #print(np.round(X[1, :, :], 1))  
 
 
         spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
