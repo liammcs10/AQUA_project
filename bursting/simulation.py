@@ -30,6 +30,8 @@ from brian2 import *
 from tqdm import tqdm   # for a progress bar
 import seaborn as sns
 sns.set_theme(style = "white")
+from joblib import Parallel, delayed
+import math
 
 # local imports
 import CLI
@@ -126,7 +128,7 @@ def sim(args, conf):
     gain_modulation(params_df, conf)
 
     # Test 2 - gain modulation on biexponential autapse in brian2
-    gain_modulation_biexponential(params_df, conf)
+    # gain_modulation_biexponential(params_df, conf)
 
     # Test 3 - STA
     # calculate_STA(params_df, conf)
@@ -147,12 +149,12 @@ def gain_modulation(params_df, conf):
     """
     print("- - - GAIN MODULATION- - -")
 
-    # convert config values to float
+    # convert config values to correct types
     conf["Gain"] = cast_to_float(conf["Gain"])
     conf["Gain"]["N_I"] = int(conf["Gain"]["N_I"])
-    conf["Gain"]["N_per_loop"] = int(conf["Gain"]["N_per_loop"])
+    #conf["Gain"]["N_per_loop"] = int(conf["Gain"]["N_per_loop"])
 
-    N_per_loop = conf["Gain"]["N_per_loop"]     # number of neurons per loop (to address memory issues)
+    #N_per_loop = conf["Gain"]["N_per_loop"]     # number of neurons per loop (to address memory issues)
     N_neurons = len(params_df)                  # number of different neuron parameters
     
     # time
@@ -196,64 +198,35 @@ def gain_modulation(params_df, conf):
         'F_steady': []
     }
 
+    #calculate N_per_loop to fit in RAM
+    N_cores = 6
+    N_per_loop = int((30 * 0.7 * 1e9)/(N_cores * N_iter * 8))
+    #N_per_loop = 1000
+    print(f'N_per_loop: {N_per_loop}')
+
     # start looping over the simulations
-    N_loops = N_sims // N_per_loop
+    N_loops = math.ceil(N_sims / N_per_loop)
     print(f'N LOOPS: {N_loops}')
-    for n in range(N_loops):
-        if n == N_loops - 1:
-            N_in_loop = N_sims - (N_loops - 1)*N_per_loop
-        else:
-            N_in_loop = N_per_loop
+    
+    # submit to joblib to parallelise
+    # Run in parallel using all available cores (n_jobs=-1)
+    results = Parallel(n_jobs=4)(
+        delayed(run_single_simulation_batch)(
+            sim_params.iloc[n * N_per_loop : (n+1) * N_per_loop],
+            I_heights[n * N_per_loop : (n+1) * N_per_loop],
+            conf, N_iter, dt
+            ) for n in range(N_loops)
+    )
 
-        # get proper indices
-        idx_start = n * N_per_loop
-        idx_end = idx_start + N_in_loop
+    # reconstruct the output dataframe from each parallel batch
+    print('- - - - -')
+    print(len(results))
 
-        # initialise
-        x_start = np.full((N_in_loop, 3), fill_value = np.array([conf["Neuron"]["c"], 0, 0]))
-        t_start = np.zeros(N_in_loop)
+    output_df = pd.concat(
+        (pd.DataFrame(res) for res in results),
+        ignore_index=True
+    )
 
-        # create I_inj
-        I_inj = np.array([step_current(N_iter, dt, y_0, delay, I_h) for I_h in I_heights[idx_start:idx_end]])
-        print(f'I_inj: {np.shape(I_inj)}')
-        print(f"I_inj is {sys.getsizeof(I_inj)/1e9} Gb")
-
-        # create batch
-        batch = batchAQUA(sim_params[idx_start:idx_end])
-        batch.Initialise(x_start, t_start)
-        # simulate
-        spikes = batch.update_batch(dt, N_iter, I_inj, SAVE_ALL = False)
-
-        """ - - - From this point analyse from spike times and start building output df - - - """
-        # quantifying autapse values
-        autapse_current = list(batch.get_net_autapse_currents())
-        autapse_delay = list(batch.get_mean_autapse_delays())
-
-        F_instant = get_F(spikes, instant = True)
-        F_steady = get_F(spikes, instant = False)
-
-        # store the data
-        output_dict["e"].append(sim_params['e'][idx_start:idx_end].to_numpy())
-        output_dict["f"].append(sim_params['f'][idx_start:idx_end].to_numpy())
-        output_dict["tau"].append(sim_params['tau'][idx_start:idx_end].to_numpy())
-        output_dict["autapse current"].append(autapse_current)
-        output_dict["autapse delay"].append(autapse_delay)
-        output_dict["I_h"].append(I_inj[idx_start:idx_end, -1])
-        output_dict["F_instant"].append(F_instant)
-        output_dict["F_steady"].append(F_steady)
-
-        # check output_dict size
-        print(f"params_df is {sys.getsizeof(output_dict)/1000} kBytes")
-
-    # flatten each entry in the output dictionary
-    for key in output_dict.keys():
-        output_dict[key] = np.hstack(output_dict[key])
-
-    output_df = pd.DataFrame(output_dict)
-
-    print('- - - OUTPUT DF - - - ')
-    print(f'LEN: {len(output_df)}')
-    print(output_df['f'].unique())
 
     # save the results dict as a pickle
     name = conf['Neuron']['name']
@@ -262,6 +235,61 @@ def gain_modulation(params_df, conf):
     filepath = f"{name}_{mode}//{name}_{mode}{file_sign}"
     with open(filepath, 'wb') as file:
         pickle.dump(output_df, file)
+
+def run_single_simulation_batch(sim_params, I_heights, conf, N_iter, dt):
+    '''
+    Batch simulation protocol for joblib parallelization.
+    
+    '''
+
+    '''
+    # Determine the bounds for this specific batch
+    idx_start = n * N_per_loop
+    if n == (N_sims // N_per_loop) - 1:     # if last loop
+        N_in_loop = N_sims - n * N_per_loop
+    else:
+        N_in_loop = N_per_loop
+    idx_end = idx_start + N_in_loop
+    '''
+    N_in_loop = len(sim_params)
+    
+    # Initialise
+    x_start = np.full((N_in_loop, 3), fill_value=np.array([conf["Neuron"]["c"], 0, 0]))
+    t_start = np.zeros(N_in_loop)
+
+    # Create I_inj
+    y_0 = conf["Gain"]["y_0"]
+    delay = conf["Gain"]["delay"]
+    I_inj = np.array([step_current(N_iter, dt, y_0, delay, I_h) for I_h in I_heights])
+
+    # Create batch and simulate
+    batch = batchAQUA(sim_params)
+    batch.Initialise(x_start, t_start)
+    spikes = batch.update_batch(dt, N_iter, I_inj, SAVE_ALL=False)
+
+    print('-- SPIKES --')
+    print(np.all(spikes == np.nan))
+    print(np.all(np.all(spikes[row, :] == np.nan) for row in spikes))
+
+    # Analyze
+    autapse_current = list(batch.get_net_autapse_currents())
+    autapse_delay = list(batch.get_mean_autapse_delays())
+    F_instant = get_F(spikes, instant=True)
+    print('-- F instant --')
+    print(F_instant)
+    F_steady = get_F(spikes, instant=False)
+
+    # Return a dictionary of results for THIS batch
+    return {
+        "e": sim_params['e'].to_numpy(),
+        "f": sim_params['f'].to_numpy(),
+        "tau": sim_params['tau'].to_numpy(),
+        "autapse current": autapse_current,
+        "autapse delay": autapse_delay,
+        "I_h": I_inj[:, -1],  # Fixed a minor bug here: I_inj is already sliced to idx_start:idx_end
+        "F_instant": F_instant,
+        "F_steady": F_steady
+    }
 
 
 
@@ -512,4 +540,3 @@ def calculate_STA(params, conf):
     del sta
     del spikes
     gc.collect()
-
