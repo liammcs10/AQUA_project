@@ -31,7 +31,7 @@ import pickle
 import gc
 import tracemalloc
 from scipy.signal import convolve, windows
-from scipy.stats import wasserstein_distance
+from scipy.stats import wasserstein_distance, entropy
 
 from FT_metrics import *
 from functions import *
@@ -110,7 +110,7 @@ def main():
 
     # simulate the autaptic network identical conditions (no noise)
     print('- - SIMULATION 1 - - ')
-    simulate(E_neuron, I_neuron, INPUT_E, W, e, f_vals, tau, "burst_analysis_identical.pickle")
+    simulate(E_neuron, I_neuron, INPUT_E, W, e, f_vals, tau, "burst_analysis_test200.pickle")
 
     # simulate the autaptic network - different noise   
     print('- - SIMULATION 2 - - ')
@@ -148,7 +148,7 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, IN
     W_MAX = 100
 
     # simulation parameters
-    T = 5000 # ms
+    T = 15000 # ms
     dt = 0.1
     N_iter = int(T/dt)
 
@@ -182,8 +182,8 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, IN
 
     # create the input current - STEP CURRENT
     I_E1 = INPUT_E * np.ones((N_SIMS, N_iter))
-    I_E2 = INPUT_E * np.ones((N_SIMS, N_iter))
-    #I_E2 = 150. * np.ones((N_SIMS, N_iter))
+    #I_E2 = INPUT_E * np.ones((N_SIMS, N_iter))
+    I_E2 = 150. * np.ones((N_SIMS, N_iter))
 
     if INPUT_NOISE['sigma'] > 0:
         theta = INPUT_NOISE['theta'] # ms
@@ -331,7 +331,8 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, IN
     ''' - - - CALCULATE METRICS - - - '''
 
     cols = ['sim_number', 'neuron_label', 'e', 'f', 'tau', 'I_inj', 'W', 'FT_distance', 'FT_EMD', 'SPIKE_distance',
-            'SPIKE_synchrony', 'spike_directionality', 'schreiber similarity', 'peak_isi', 'peak_number', 'mean', 'std', 'count_sum', 'CV_isi', 'LV']
+            'SPIKE_synchrony', 'spike_directionality', 'schreiber similarity', 'peak_isi', 'peak_number', 'mean', 
+            'std', 'count_sum', 'CV_isi', 'LV', 'entropy']
     results_df = pd.DataFrame(columns = cols)
 
 
@@ -385,6 +386,7 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, IN
     count_sum = []
     CV_isi = []
     LV = []
+    ISI_entropy = []
 
     ''' - - - SAVE MEMBRANE TRACES - - - '''
     trace_dict = {}
@@ -435,13 +437,23 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, IN
         schreiber = schreiber_similarity(bin_E1[i], bin_E2[i], sigma = 15, dt = dt)
 
         '''- - ISI histogram metrics - -'''
-        bins = 100
+        bins = 300
         x_range = (0, 150)
     
         counts_E1, bin_edges_E1 = np.histogram(isi_E1[i, :], bins = bins, range = x_range)
         counts_E2, bin_edges_E2 = np.histogram(isi_E2[i, :], bins = bins, range = x_range)
+        counts_E1 = gaussian_filter(counts_E1, sigma = 2)
+        counts_E2 = gaussian_filter(counts_E2, sigma = 2)
+        
+        '''- - Shannon Entropy of ISI dsit - - '''
+        entropy_E1 = entropy(counts_E1)
+        entropy_E2 = entropy(counts_E2)
+
         results_E1 = analyze_isi_peaks(counts_E1, bin_edges_E1)
         results_E2 = analyze_isi_peaks(counts_E2, bin_edges_E2)
+        #results_E1, metadata_E1 = discover_and_analyze_isi_peaks(spikes_E1[i], counts_E1, bin_edges_E1)
+        #results_E2, metadata_E2 = discover_and_analyze_isi_peaks(spikes_E2[i], counts_E1, bin_edges_E1)
+
 
         ''' LOOP THROUGH ALL THE NEURONS AND APPEND TO EACH DATA LIST'''
         # append the data for each identified peak
@@ -467,6 +479,7 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, IN
             SPIKE_synch.append(SPIKE_synchrony)
             spike_directionality.append(spike_direct)
             schreiber_sim.append(schreiber)
+            ISI_entropy.append(entropy_E1)
 
 
         for k in range(len(results_E2)):        # loop over all the peaks in E2
@@ -491,6 +504,7 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, IN
             SPIKE_synch.append(SPIKE_synchrony)
             spike_directionality.append(spike_direct)
             schreiber_sim.append(schreiber)
+            ISI_entropy.append(entropy_E2)
 
 
     # append to dataframes, these are comparison metrics between both responses...
@@ -516,8 +530,9 @@ def simulate(E_neuron, I_neuron, INPUT_E, W, e_val, f_vals, tau_val, outfile, IN
     results_df['count_sum'] = count_sum
     results_df['CV_isi'] = CV_isi
     results_df['LV'] = LV
+    results_df['entropy'] = ISI_entropy
     results_df['num_peaks'] = results_df.groupby(['sim_number', 'neuron_label'])['neuron_label'].transform('count')
-
+    
 
     # save the distance metrics
     with open(outfile, 'wb') as file:
