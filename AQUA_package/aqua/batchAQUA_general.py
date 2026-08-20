@@ -161,6 +161,8 @@ class batchAQUA:
 
         else:       # if not SAVE_ALL, need to store passed values up to tau_delay_largest
             TAU_LARGEST = np.max(delay_steps)
+            if TAU_LARGEST == 0:
+                TAU_LARGEST = 1
             X = np.zeros((self.N_models, 3, TAU_LARGEST), dtype = np.float64)
             X[:, :, -1] = self.x        # add the start value to the last element (essentially, the 'previous' timestep)
 

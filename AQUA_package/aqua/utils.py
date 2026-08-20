@@ -13,6 +13,7 @@ from tqdm import tqdm
 
 from scipy.signal import find_peaks, peak_prominences
 from scipy.ndimage import gaussian_filter
+from sklearn.mixture import GaussianMixture, BayesianGaussianMixture
 
 
 
@@ -293,8 +294,7 @@ def analyze_isi_peaks(counts, bin_edges, prominence = None, distance = None):
     if prominence is None and distance is None:
         # calculated to match the plot_ISI_w_peaks
         prominence = 0.45*np.max(counts)
-        distance = 0.1*(len(bin_edges)-1)
-
+        distance = 1 #0.02*(len(bin_edges)-1)
 
     # Calculate bin centers
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
@@ -337,6 +337,123 @@ def analyze_isi_peaks(counts, bin_edges, prominence = None, distance = None):
         })
         
     return results
+
+
+def discover_and_analyze_isi_peaks(spikes, counts, bin_edges, max_peaks=5):
+    """
+    Automatically detects the number of overlapping peaks in an ISI histogram
+    using BIC scoring, then extracts their statistical parameters.
+    
+    Parameters:
+    -----------
+    counts : array-like
+        The heights of the histogram bins.
+    bin_edges : array-like
+        The edges of the bins.
+    max_peaks : int
+        The maximum number of peaks you realistically expect to find.
+    """
+    # 1. Recreate the underlying sample distribution from the histogram counts
+    #bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    #simulated_data = np.repeat(bin_centers, counts.astype(int)).reshape(-1, 1)
+    simulated_data =  spikes[~np.isnan(spikes)].reshape(-1, 1)
+    
+
+    if len(simulated_data) == 0:
+        return []
+
+    # 2. Test different numbers of peaks and track their BIC scores
+    bic_scores = []
+    models = []
+    candidate_peak_counts = range(1, max_peaks + 1)
+    
+    for k in candidate_peak_counts:
+        gmm = GaussianMixture(n_components=k, random_state=42)
+        gmm.fit(simulated_data)
+        bic_scores.append(gmm.bic(simulated_data))
+        models.append(gmm)
+    
+    # 3. Select the model with the LOWEST BIC score
+    best_model_idx = np.argmin(bic_scores)
+    best_model = models[best_model_idx]
+    optimal_n_peaks = candidate_peak_counts[best_model_idx]
+    
+    # 4. Extract parameters from the winning model
+    means = best_model.means_.flatten()
+    std_devs = np.sqrt(best_model.covariances_).flatten()
+    weights = best_model.weights_
+    
+    # Sort chronologically by mean ISI
+    sort_idx = np.argsort(means)
+    
+    results = []
+    for idx in sort_idx:
+        results.append({
+            'peak_isi': means[idx],
+            'mean': means[idx],
+            'std': std_devs[idx],
+            'proportion': weights[idx],
+            'estimated_count': weights[idx] * np.sum(counts)
+        })
+        
+    # Metadata about the discovery process
+    metadata = {
+        'detected_num_peaks': optimal_n_peaks,
+        'bic_scores': dict(zip(candidate_peak_counts, bic_scores))
+    }
+    
+    return results, metadata
+
+
+def BGMM_peak_finding(isis, counts, max_peaks=10, weight_threshold=0.05):
+    """
+    Automatically detects overlapping peaks in an ISI distribution using a 
+    SINGLE Bayesian Gaussian Mixture Model by filtering out low-weight clusters.
+    """
+    # 1. Recreate/clean the underlying sample distribution
+    simulated_data = isis[~np.isnan(isis)].reshape(-1, 1) 
+
+    if len(simulated_data) == 0:
+        return [], {}
+
+    # 2. Fit a single BGMM with the maximum upper bound
+    # Using a Dirichlet Process weight concentration prior
+    bgmm = BayesianGaussianMixture(
+        n_components=max_peaks, 
+        weight_concentration_prior_type='dirichlet_process',
+        weight_concentration_prior = 0.00001,
+    )
+    bgmm.fit(simulated_data)
+    
+    # 3. Extract raw parameters
+    means = bgmm.means_.flatten()
+    # Note: covariances_ shape depends on covariance_type (default is 'full')
+    # For 1D data, we squeeze it to get variance, then square root for STD
+    std_devs = np.sqrt(np.squeeze(bgmm.covariances_))
+    weights = bgmm.weights_
+    
+    # 4. Filter out 'dead' components that the Bayesian prior eliminated
+    active_idx = np.where(weights > weight_threshold)[0]
+    
+    # Sort the surviving peaks chronologically by mean ISI
+    sort_idx = active_idx[np.argsort(means[active_idx])]
+    
+    results = []
+    for idx in sort_idx:
+        results.append({
+            'peak_isi': means[idx],
+            'mean': means[idx],
+            'std': std_devs[idx],
+            'proportion': weights[idx],
+            'estimated_count': weights[idx] * np.sum(counts)
+        })
+        
+    metadata = {
+        'detected_num_peaks': len(results),
+        'active_weights': weights[sort_idx].tolist()
+    }
+    
+    return results, metadata
 
 
 def isi_local_variation(spikes):

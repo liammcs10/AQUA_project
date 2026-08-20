@@ -174,8 +174,8 @@ def plot_ISI_w_peaks(spike_times, bins = 50, x_range = (0, 100), fig = None, ax 
     # --- 3. Detect Peaks and Widths ---
     # height: minimum count to be considered a peak
     # distance: minimum number of bins between peaks
-    peaks, properties = find_peaks(counts, height=np.max(counts)*0.5, distance=0.1*bins)
-    results_half = peak_widths(counts, peaks, rel_height=0.5)
+    peaks, properties = find_peaks(counts, height=np.max(counts)*0.45, distance=0.1*(len(bin_edges)-1))
+    results_half = peak_widths(counts, peaks, rel_height=0.8)
 
     # Mapping indices back to time units for plotting
     def idx_to_val(idx):
