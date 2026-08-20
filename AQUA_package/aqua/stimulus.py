@@ -13,8 +13,10 @@ from scipy.signal import butter, sosfilt, sosfiltfilt
 
 
 def OU_current(N_iter, dt, y_0, theta, mu, sigma):
-    # implemented using the Euler-Maruyama method.
-    # mu is an array representing the time varying long-term mean.
+    """Generate an Ornstein-Uhlenbeck current using Euler-Maruyama.
+
+    ``mu`` can be time-varying and should have length ``N_iter``.
+    """
     ys = np.zeros(N_iter)
     ys[0] = y_0
     for i in range(1, N_iter):
@@ -89,6 +91,9 @@ def spikes_from_dist(inverse_cdf, N_iter, dt, seed = None):
 def spikes_constant(N_iter, dt, y_0, ISI, N_spikes, spike_height, spike_duration = 1, delay = 500):
     """
     Create an input spike train (of N_spikes) with a fixed ISI, T.
+
+    The returned array is an injected-current trace, not a binary spike train:
+    each input spike is represented as a rectangular current pulse.
     """
     
     I = y_0 * np.ones(N_iter)
@@ -198,4 +203,3 @@ def filtered_white_noise_fast(T, dt, amplitude=None, cutoff=30, poles=5):
         y *= (amplitude / y_max)
     
     return y
-

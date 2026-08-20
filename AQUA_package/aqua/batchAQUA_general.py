@@ -59,6 +59,8 @@ class batchAQUA:
         if not isinstance(params_df, pd.DataFrame):
             params_df = pd.DataFrame(params_df)
 
+        # Store each parameter as a vector so every neuron in the batch can be
+        # advanced with the same NumPy operations.
         self.N_models = len(params_df)
         self.name = params_df['name'].to_numpy(dtype = str)
         self.isFS = (np.char.find(self.name, "FS")!=-1)     # bool array, where the neuron is of FS type.
@@ -145,6 +147,8 @@ class batchAQUA:
         
         """
 
+        # Each neuron can have its own delay, so most of the complexity below is
+        # bookkeeping for reading the correct delayed w value for each row.
         delay_steps = (self.tau / dt).astype(int)
 
         if len(w_prev) == 0:
@@ -156,6 +160,9 @@ class batchAQUA:
             X[:, :, 0] = self.x    # (N_models, 3, 1)
 
             T = np.linspace(0, (N_iter - 1) * dt, N_iter)
+            # delay_index points at the column containing w(t - tau) for each
+            # neuron. It starts negative so early values can be taken from the
+            # pre-simulation history in w_prev.
             delay_index = 1-delay_steps    # store the index of the autaptic delay
             delay_index[delay_index > 0] = 0
 
@@ -166,6 +173,8 @@ class batchAQUA:
             X = np.zeros((self.N_models, 3, TAU_LARGEST), dtype = np.float64)
             X[:, :, -1] = self.x        # add the start value to the last element (essentially, the 'previous' timestep)
 
+            # In memory-light mode, X is a rolling window rather than a full
+            # trace. Negative delay indices keep pointing into that window.
             delay_index = -delay_steps    # store the index of the autaptic delay
             delay_index[delay_index >= 0] = -1      # where there is no delay, access previous tau value
         
@@ -177,6 +186,8 @@ class batchAQUA:
             if n <= np.max(delay_steps): # early in sim
 
                 w_tau1 = np.zeros(self.N_models)                
+                # Split neurons by whether their delayed autapse value already
+                # exists inside X or still lies before the start of this run.
                 tau_idx = np.nonzero(~(n <= delay_steps))                             # indices that need updating
                 prev_idx = np.nonzero(n <= delay_steps)                               # where delay_steps extends prior to the sim start
                 w_tau1[tau_idx] = X[tau_idx, 2, delay_index[tau_idx]]                 # get w at the delay
@@ -232,7 +243,9 @@ class batchAQUA:
         spike_times = pad_list(spike_times)     # create a numpy array of fixed dimension
     
         if SAVE_ALL:
-            # shift the autapse current array values to line up with the actual times
+            # Shift the saved autapse-current traces to line up with delivery
+            # time. This mirrors AQUA.update_RK2 and makes plots/analysis read
+            # w as the current entering the membrane equation.
             for i, delay in enumerate(delay_steps):
                 if delay != 0:
                     X[i, 2, :] = np.roll(X[i, 2, :], delay)
@@ -277,7 +290,7 @@ class batchAQUA:
                 autapses:   brian2 Synapses
 
         """
-        # check autapse_type
+        # autapse_type controls the waveform of the self-feedback current.
         autapse_type = autapse_type.lower()
         assert autapse_type in ['standard', 'biexponential', 'uniform'], f"{autapse_type} is not a supported autapse model."
 
@@ -286,7 +299,7 @@ class batchAQUA:
                 print("Must pass values for t_a1, t_a2, I_peak when non-standard autapse models are used")
                 quit()
             
-        # check autapse_mode
+        # autapse_mode controls when the self-feedback is delivered.
         autapse_mode = autapse_mode.lower()
         assert autapse_mode in ['standard', 'normal', 'uniform', 'poisson', 'erlang'], f"{autapse_mode} is not a supported autapse delivery mode."
 
@@ -307,7 +320,8 @@ class batchAQUA:
         """
         
 
-        # separate neuron equation for FS
+        # Brian2 equations are built separately for FS and non-FS populations
+        # because the recovery-variable dynamics differ.
         if np.all(self.isFS == 1):
             # U = (v < -55) / 0.025*(v + 55)**3 : 0. : 1
             ODEs = '''
@@ -364,7 +378,8 @@ class batchAQUA:
         G = NeuronGroup(self.N_models, EQS, threshold = 'v >= v_peak', reset = RESET, method = 'rk2', namespace = {'stimulus': stimulus_name})
 
         
-        # autapse reset only depends on the autapse_type
+        # The reset event injects the autapse waveform. Delivery timing is set by
+        # the Synapses object below.
         if autapse_type == 'standard':
             aut_reset = 'w += f'
         elif autapse_type == 'biexponential':
@@ -387,6 +402,8 @@ class batchAQUA:
         
         elif autapse_mode == 'poisson' or autapse_mode == 'erlang':         # the delay is sampled from a poisson distribution
 
+            # Random-delay modes use relay neurons. A spike activates a relay;
+            # the relay then emits to the original neuron after a sampled time.
             N_relay = self.N_models * p2    # number of internal neurons
             N_syn = N_relay - self.N_models            # number of internal synapses
 

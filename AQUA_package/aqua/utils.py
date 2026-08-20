@@ -41,7 +41,7 @@ def convert_spikes_to_aqua(spike_train):
 
 
 def binarise_spikes(spikes, dt, N_iter):
-    ''' Convert AQUA spike outputs to binary spike trains '''
+    '''Convert padded AQUA spike-time outputs to binary spike trains.'''
     
     N_neurons = np.shape(spikes)[0]
 
@@ -74,6 +74,7 @@ def get_ISI_time_series(spikes, N_iter, dt):
 
 
 def pad_list(lst, pad_value=np.nan, pad_end = True):
+    """Pad an uneven list of lists into a rectangular NumPy array."""
     max_length = max(len(sublist) for sublist in lst)
     if pad_end:     # pad the end of the list
         return np.array([sublist + [pad_value] * (max_length - len(sublist)) for sublist in lst])
@@ -82,7 +83,7 @@ def pad_list(lst, pad_value=np.nan, pad_end = True):
 
 
 def embed(X, window):
-    ''' reorder the time series X into (N - window) rows of length window '''
+    '''Reorder a time series into overlapping windows for history-based analysis.'''
     T = np.shape(X)[0]
     Y = np.zeros(((T - window, window)))
     for i in range(0, T-window):

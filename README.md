@@ -29,6 +29,7 @@ The most reusable implementation lives in `AQUA_package/aqua/`.
   simulations.
 
 The package metadata is defined in `AQUA_package/pyproject.toml`.
+Package-specific usage notes are in `AQUA_package/README.md`.
 
 ### 2. Research experiments and notebooks
 
