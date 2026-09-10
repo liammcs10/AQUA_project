@@ -1,0 +1,41 @@
+,brain region,type,proportion (%),Species,x_loc,y_loc
+0,occipital cortex,E,50.0,Rat,720,190
+1,striatum,I,66.7,Rat,730,450
+2,striatum,I,94.0,Rat,740,470
+3,somatosensory,E,80.0,rat,835,290
+4,PFC,E,56.4,mouse,480,340
+5,PFC,E,2.6,mouse,490,320
+6,PFC,E,59.3,mouse,470,340
+7,PFC,E,84.8,mouse,460,310
+8,PFC,E,11.5,mouse,460,340
+9,PFC,E,28.6,human (adult),460,320
+10,neocortex,I,4.2,rat,530,240
+11,occipital cortex,E,10.0,cat,750,200
+12,occipital cortex,E,0.0,cat,740,170
+13,occipital cortex,I,100.0,cat,730,200
+14,occipital cortex,I,100.0,cat,730,180
+15,occipital cortex,I,33.3,cat,750,180
+16,hippocampus (CA1-3),I,100.0,rat,800,350
+17,hippocampus (CA1-3),I,100.0,rat,770,330
+18,somatosensory,I,85.0,rat,835,270
+19,somatosensory,I,0.0,rat,845,260
+20,cerebellar cortex,I,20.0,rat,910,240
+21,neocortex,I,64.3,human (epileptic),540,220
+22,neocortex,I,27.9,rats (adult/juvenile),510,240
+23,somatosensory,I,80.0,rat,825,290
+24,hippocampus (CA1-3),E,0.0,rat,770,320
+25,hippocampus (subiculum),E,51.6,rat,650,250
+26,hippocampus (subiculum),E,46.6,rat,680,220
+27,hippocampus (subiculum),E,17.2,rat,660,240
+28,somatosensory,I,74.0,mouse,805,260
+29,neocortex,I,69.4,human,520,230
+30,neocortex,I,7.1,human,510,220
+31,somatosensory,I,57.9,mouse,805,250
+32,hippocampus (CA1-3),I,100.0,rat (young adult),790,320
+33,hippocampus (CA1-3),I,65.0,rat (young adult),800,320
+34,hippocampus (CA1-3),I,0.0,rat (young adult),760,320
+35,olfactory bulb,I,100.0,rat,340,490
+36,somatosensory,I,90.0,rat,835,280
+37,neocortex,I,64.3,human,540,220
+38,striatum,I,50.0,mouse,740,480
+39,striatum,I,0.0,mouse,720,450
