@@ -19,6 +19,8 @@ hippocampus (CA1-3),I,100,rat,720,240
 hippocampus (CA1-3),I,100,rat,0,0
 somatosensory,I,85,rat,0,0
 somatosensory,I,0,rat,0,0
+cerebellar cortex,I,26,rat,930,250
+cerebellar cortex,I,5,rat,930,250
 cerebellar cortex,I,20,rat,930,250
 neocortex,I,64.3,human (epileptic),0,0
 neocortex,I,27.9,rats (adult/juvenile),0,0
