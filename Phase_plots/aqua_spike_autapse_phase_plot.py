@@ -55,22 +55,22 @@ T_START = 0.0
 # ---------------------------------------------------------------------------
 V_MIN = -85.0
 V_MAX = 40.0
-U_MIN = -30.0
-U_MAX = 160.0
+U_MIN = -40.0
+U_MAX = 100.0
 N_GRID = 45
 
 # ---------------------------------------------------------------------------
 # PLOT SELECTION / OUTPUT PARAMETERS
 # ---------------------------------------------------------------------------
-PRE_SPIKE_OFFSET_MS = DT
-POST_SPIKE_OFFSET_MS = DT
+PRE_SPIKE_OFFSET_MS = 5*DT
+POST_SPIKE_OFFSET_MS = 2*DT
 IMMEDIATE_AUTAPSE_OFFSET_MS = DT
 LATE_AUTAPSE_OFFSET_MS = 10.0
 AUTAPSE_DIED_DOWN_FRACTION = 0.01
 TRAJECTORY_WINDOW_MS = 35.0
-PHASE_OUTPUT_PATH = Path("aqua_RS_spike_autapse_vs_control_phase_plot.png")
-AUTAPTIC_TIME_SERIES_OUTPUT_PATH = Path("aqua_RS_spike_autapse_time_series.png")
-NON_AUTAPTIC_TIME_SERIES_OUTPUT_PATH = Path("aqua_RS_spike_no_autapse_time_series.png")
+PHASE_OUTPUT_PATH = "aqua_RS_spike_autapse_vs_control_phase_plot.png"
+AUTAPTIC_TIME_SERIES_OUTPUT_PATH = "aqua_RS_spike_autapse_time_series.png"
+NON_AUTAPTIC_TIME_SERIES_OUTPUT_PATH = "aqua_RS_spike_no_autapse_time_series.png"
 DPI = 300
 
 
@@ -114,6 +114,12 @@ def calculate_phase_field(neuron, v_grid, u_grid, w_delivered, i_inj):
 
 
 def simulate_neuron(params):
+    """Run an AQUA neuron forward under a constant injected current and return its trace.
+
+    Builds an AQUA neuron from `params`, integrates it with RK2 for T_MAX/DT
+    steps under a constant I_INJ, and returns the neuron plus its state trace,
+    time trace, and spike times. Raises if the neuron never spikes.
+    """
     n_iter = int(T_MAX / DT)
     i_trace = I_INJ * np.ones(n_iter)
 
@@ -143,7 +149,7 @@ def choose_snapshot_indices(t_trace, x_trace, spikes):
     """
     first_spike_time = spikes[0]
     if len(spikes) >= 2:
-        latest_snapshot_time = spikes[1] - DT
+        latest_snapshot_time = spikes[1] - PRE_SPIKE_OFFSET_MS
     else:
         latest_snapshot_time = t_trace[-1]
 
@@ -229,11 +235,13 @@ def plot_phase_comparison(
     )
 
     pad = int(8.0 / DT)
-    traj_start = max(snapshot_indices[0] - pad, 0)
+    traj_start = 0               #max(snapshot_indices[0] - pad, 0)
     default_traj_stop = min(
         snapshot_indices[-1] + int(TRAJECTORY_WINDOW_MS / DT),
         len(t_trace) - 1,
     )
+
+    print(f"DEFAULT TRAJ STOP: {default_traj_stop}")
 
     plot_specs = [
         ("autaptic", autaptic_neuron, autaptic_trace, autaptic_spikes, axes[0]),
@@ -248,7 +256,7 @@ def plot_phase_comparison(
 
     for row_label, neuron, x_trace, spikes, row_axes in plot_specs:
         if len(spikes) >= 2:
-            traj_stop = index_at_time(t_trace, spikes[1]) + 1
+            traj_stop = index_at_time(t_trace, spikes[1])
         else:
             traj_stop = default_traj_stop
 
@@ -444,11 +452,11 @@ def main():
     phase_fig.savefig(PHASE_OUTPUT_PATH, dpi=DPI)
     if "agg" not in plt.get_backend().lower():
         plt.show()
-    print(f"Saved phase plot to {PHASE_OUTPUT_PATH.resolve()}")
-    print(f"Saved autaptic time-series plot to {AUTAPTIC_TIME_SERIES_OUTPUT_PATH.resolve()}")
+    print(f"Saved phase plot to {PHASE_OUTPUT_PATH}")
+    print(f"Saved autaptic time-series plot to {AUTAPTIC_TIME_SERIES_OUTPUT_PATH}")
     print(
         "Saved non-autaptic time-series plot to "
-        f"{NON_AUTAPTIC_TIME_SERIES_OUTPUT_PATH.resolve()}"
+        f"{NON_AUTAPTIC_TIME_SERIES_OUTPUT_PATH}"
     )
 
 

@@ -19,8 +19,9 @@ from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import lsqr
 # create utils file?
 
-from AQUA_general import AQUA
-from batchAQUA_general import batchAQUA
+import aqua
+from aqua.AQUA_general import AQUA
+from aqua.batchAQUA_general import batchAQUA
 
 
 """
