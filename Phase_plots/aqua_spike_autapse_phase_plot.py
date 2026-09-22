@@ -241,8 +241,6 @@ def plot_phase_comparison(
         len(t_trace) - 1,
     )
 
-    print(f"DEFAULT TRAJ STOP: {default_traj_stop}")
-
     plot_specs = [
         ("autaptic", autaptic_neuron, autaptic_trace, autaptic_spikes, axes[0]),
         (
@@ -345,8 +343,8 @@ def plot_phase_snapshots(neuron, x_trace, t_trace, snapshot_indices, snapshot_la
             du,
             color=speed,
             cmap="viridis",
-            density=1.15,
-            linewidth=0.9,
+            density=0.8,
+            linewidth=0.5,
             arrowsize=1.0,
         )
         ax.plot(
