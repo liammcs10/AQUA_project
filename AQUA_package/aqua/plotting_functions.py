@@ -32,13 +32,16 @@ def plot_ISI_dist(spikes, bins = 50, range = (0, 300), fig = None, ax = None):
     return fig, ax
 
 
-def plot_membrane_variables(X, T, split = []):
+def plot_membrane_variables(X, T, split = [], fig = None, ax = None):
     # X has shape: 3 x N_iter
     # T has shape: N_iter
     # split: describes the sub_range of values to zoom into.
     if len(split) == 0:
         split = range(len(T))
-    fig, ax = plt.subplots(3, 1, figsize = (15, 5), sharex = 'all')
+
+    if (fig is None) and (ax is None):
+        fig, ax = plt.subplots(3, 1, figsize = (15, 5), sharex = 'all')
+
     colors = ['r', 'g', 'b']
     labels = ['v', 'u', 'w']
     for i in range(3):
@@ -47,6 +50,7 @@ def plot_membrane_variables(X, T, split = []):
         #ax[i].set_xlabel("Time [ms]")
         ax[i].set_ylabel(labels[i])
     ax[-1].set_xlabel("Time [ms]")
+
     return fig, ax
 
 
@@ -441,7 +445,7 @@ def plot_VUtime(X, T, split, I, neuron, N_dim):
     return fig
 
 
-def plot_bifurcation_I(spikes, I_range, steady_state = True, fig = None, ax = None):
+def plot_bifurcation(spikes, x_var, burn_in = 0, fig = None, ax = None, **kwargs):
     """
     Plots the steady-state or instantaneous ISIs versus injected current. 
     
@@ -460,17 +464,25 @@ def plot_bifurcation_I(spikes, I_range, steady_state = True, fig = None, ax = No
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(1, 1, figsize = (10, 10))
-    
+
+    # Default styling if not provided in kwargs
+    kwargs.setdefault('c', 'teal')
+    kwargs.setdefault('alpha', 0.6)
+    kwargs.setdefault('s', 2)
+    kwargs.setdefault('marker', 'o')
+
     for i in range(np.shape(spikes)[0]):
         spike_times = spikes[i, ~np.isnan(spikes[i])] # get row and remove nan values
-        if steady_state:
-            subSpikes = spike_times[-int(0.5*len(spike_times)):] # last half of spikes
-        else: # if instantaneous is desired
-            subSpikes = spike_times[:int(0.5*len(spike_times))]  # first half of spikes
+        if burn_in < 0:
+            subSpikes = spike_times[:len(spike_times)//2] # first half of spikes
+        elif burn_in > 0: # if instantaneous is desired
+            subSpikes = spike_times[spike_times > burn_in]  # last half of spikes after burn_in
+        else:
+            subSpikes = spike_times
         
         ISI = np.diff(subSpikes)
         isi_vals, isi_counts = np.unique(np.round(ISI, decimals = 4), return_counts = True)
-        ax.scatter(I_range[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, c = 'black', s = 0.8, marker = "o")
+        ax.scatter(x_var[i]*np.ones(np.shape(isi_vals)[0]), isi_vals, **kwargs)
 
     return fig, ax
 
