@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from brian2 import *
+import sys
 
 
 class batchAQUA:
@@ -296,8 +297,8 @@ class batchAQUA:
 
         if (autapse_type in ['biexponential', 'uniform']):
             if (t_a1 is None) or (t_a2 is None) or (I_peak is None):
-                print("Must pass values for t_a1, t_a2, I_peak when non-standard autapse models are used")
-                quit()
+                sys.exit("WARNING: Must pass values for t_a1, t_a2, I_peak when non-standard autapse models are used")
+                exit()
             
         # autapse_mode controls when the self-feedback is delivered.
         autapse_mode = autapse_mode.lower()
@@ -305,8 +306,7 @@ class batchAQUA:
 
         if autapse_mode != 'standard':
             if (p1 is None) or (p2 is None):
-                print("Must pass values for p1 and p2 when non-standard autapse delivery modes are used")
-                quit()
+                sys.exit("WARNING: Must pass values for p1 and p2 when non-standard autapse delivery modes are used")
             elif autapse_mode == 'poisson':
                 p2 = 1
             
