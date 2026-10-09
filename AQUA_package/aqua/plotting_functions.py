@@ -150,7 +150,7 @@ def plot_raster(spike_array, total_time, ax=None, **kwargs):
     linewidth = kwargs.get('linewidth', 1.5)
 
     for i in range(num_trains):
-        spike_indices = np.where(spike_array[i, :] > 0)[0]
+        spike_indices = np.where(spike_array[i, ~np.isnan(spike_array[i])] > 0)[0]
         spike_times = spike_array[i, spike_indices]
         
         # Plotting the spikes
@@ -194,7 +194,7 @@ def plot_ISI_w_peaks(spike_times, bins = 50, x_range = (0, 100), fig = None, ax 
     if fig is None and ax is None:
         fig, ax = plt.subplots(1, 1, figsize = (4, 4))
     
-    ax.hist(isis, bins=50, range = x_range, color='skyblue', edgecolor='black', alpha=0.7, label='ISI Histogram')
+    ax.hist(isis, bins=bins, range = x_range, color='skyblue', edgecolor='black', alpha=0.7, label='ISI Histogram')
 
     # Add vertical lines at peaks
     for pt in peak_times:
