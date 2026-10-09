@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -)",
+      "Bash(PREVIEW_DIR=/tmp/claude-1001/-home-liam-Documents-PhD-autapses-AQUA-project-Phase-plots/4ae65e54-64b4-4a22-8005-26a618cd883f/scratchpad python bifurcations_phase_portraits.py)"
+    ],
+    "deny": [
+      "Bash(git commit*)",
+      "Bash(git push*)"
+  }
+}
