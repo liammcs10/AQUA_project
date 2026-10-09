@@ -32,6 +32,7 @@ import seaborn as sns
 sns.set_theme(style = "white")
 from joblib import Parallel, delayed
 import math
+from scipy.stats import entropy
 
 # local imports
 import CLI
@@ -202,11 +203,11 @@ def gain_modulation(params_df, conf):
     N_cores = 6
     N_per_loop = int((30 * 0.7 * 1e9)/(N_cores * N_iter * 8))
     #N_per_loop = 1000
-    print(f'N_per_loop: {N_per_loop}')
+    #print(f'N_per_loop: {N_per_loop}')
 
     # start looping over the simulations
     N_loops = math.ceil(N_sims / N_per_loop)
-    print(f'N LOOPS: {N_loops}')
+    #print(f'N LOOPS: {N_loops}')
     
     # submit to joblib to parallelise
     # Run in parallel using all available cores (n_jobs=-1)
@@ -220,21 +221,38 @@ def gain_modulation(params_df, conf):
 
     # reconstruct the output dataframe from each parallel batch
     print('- - - - -')
-    print(len(results))
+    print('RESULTS')
+    keys = np.array(list(results[0].keys()))
 
-    output_df = pd.concat(
-        (pd.DataFrame(res) for res in results),
-        ignore_index=True
-    )
+    spikes = []
+    dfs = []
+    for res in results:
+        #temp_spikes = [list(sp) for sp in res['spikes']]
+        for sp in res['spikes']:
+            spikes.append(list(sp))
 
+        del res['spikes']
+        temp_df = pd.DataFrame(res)
+
+        dfs.append(temp_df)
+    output_df = pd.concat(dfs, ignore_index = True)
+
+    spike_arr = pad_list(spikes)
 
     # save the results dict as a pickle
     name = conf['Neuron']['name']
     mode = conf['Autapse']['mode']
     file_sign = conf['Gain']['outfile']
     filepath = f"{name}_{mode}//{name}_{mode}{file_sign}"
+    # save dataframe 
     with open(filepath, 'wb') as file:
         pickle.dump(output_df, file)
+    #save spikes
+    filepath = f"{name}_{mode}//{name}_{mode}_SPIKES.pickle"
+    with open(filepath, 'wb') as file:
+        pickle.dump(spike_arr, file)
+    
+
 
 def run_single_simulation_batch(sim_params, I_heights, conf, N_iter, dt):
     '''
@@ -267,17 +285,20 @@ def run_single_simulation_batch(sim_params, I_heights, conf, N_iter, dt):
     batch.Initialise(x_start, t_start)
     spikes = batch.update_batch(dt, N_iter, I_inj, SAVE_ALL=False)
 
-    print('-- SPIKES --')
-    print(np.all(spikes == np.nan))
-    print(np.all(np.all(spikes[row, :] == np.nan) for row in spikes))
 
     # Analyze
     autapse_current = list(batch.get_net_autapse_currents())
     autapse_delay = list(batch.get_mean_autapse_delays())
     F_instant = get_F(spikes, instant=True)
-    print('-- F instant --')
-    print(F_instant)
     F_steady = get_F(spikes, instant=False)
+    
+    # get number of isi peaks
+    bins = 50
+    x_range = (0, 150)
+    num_peaks = get_num_peaks(spikes, bins = bins, range = x_range, prominence_fraction = 0.2, distance = 1)
+    # approximate entropy of the spike train
+    spike_entropy = get_entropy(spikes, bins = bins, range = x_range)
+
 
     # Return a dictionary of results for THIS batch
     return {
@@ -288,7 +309,10 @@ def run_single_simulation_batch(sim_params, I_heights, conf, N_iter, dt):
         "autapse delay": autapse_delay,
         "I_h": I_inj[:, -1],  # Fixed a minor bug here: I_inj is already sliced to idx_start:idx_end
         "F_instant": F_instant,
-        "F_steady": F_steady
+        "F_steady": F_steady,
+        'spikes': spikes,
+        "num_frequencies": num_peaks,
+        "entropy": spike_entropy
     }
 
 

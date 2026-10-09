@@ -1,10 +1,7 @@
 
-
-
 import numpy as np
-
-
-
+from aqua.utils import analyze_isi_peaks
+from scipy.stats import entropy
 
 
 """ - - - - HELPER FUNCTIONS - - - - """
@@ -34,6 +31,40 @@ def get_F(spikes, instant = False):
                 F[n] = np.max(freq)     # largest firing frequency in the steady-state
 
     return F
+
+def get_num_peaks(spikes, bins = 300, range = (0, 150), prominence_fraction = None, distance = None):
+    """
+    returns the number of isi peaks for each neuron in 'spikes'
+    """
+    N_neurons = len(spikes)
+    # convert spikes to ISIs
+    isi = np.diff(spikes, axis = 1)
+    # bin spikes for peak finding function
+    num_peaks = np.zeros(N_neurons, dtype = np.int32)
+
+    for n, row in enumerate(isi):
+        counts, bin_edges = np.histogram(row, bins = bins, range = range)
+        if prominence_fraction is not None:
+            prominence = prominence_fraction * np.sum(counts)
+        else:
+            prominence = None
+        num_peaks[n] = len(analyze_isi_peaks(counts, bin_edges, prominence, distance))
+
+    return num_peaks
+
+def get_entropy(spikes, bins = 300, range = (0, 150)):
+    """ 
+    Calculate the entropy of the ISI distribution for each neuron in 'spikes'
+    """
+        # convert spikes to ISIs
+    isi = np.diff(spikes, axis = 1)
+    spike_entropy = np.zeros(isi.shape[0])
+
+    for n, row in enumerate(isi):
+        counts, _ = np.histogram(row, bins = bins, range = range)
+        spike_entropy[n] = entropy(counts, base = 2.0)
+
+    return spike_entropy
 
 
 def cast_to_float(data_dict):
