@@ -1,0 +1,16 @@
+Author,Year,autapse,Epileptic,connection type,species,E/I,duration (ms),std. duration (ms),# events,std. # events,driving train
+Jiang et al.,2012,TRUE,TRUE,FS autapse,human,I,187,11,17.7,1.6,20 APs (200Hz)
+Jiang et al.,2012,TRUE,FALSE,FS autapse,human,I,103,11,8.1,1,20 APs (200Hz)
+Jiang et al.,2012,FALSE,TRUE,FS-FS,human,I,64.8,8.6,3.2,0.6,20 APs (200Hz)
+Jiang et al. ,2012,FALSE,TRUE,FS-FS,human,I,117,23,7,1.4,40 APs (200Hz)
+Jiang et al. ,2012,FALSE,TRUE,FS-PC,human,I,98.8,9.6,6.1,0.8,20 APs (200Hz)
+Jiang et al.,2012,TRUE,FALSE,FS autapse,rat,I,53.9,4.2,3.3,0.4,20 APs (200Hz)
+Jiang et al.,2012,TRUE,FALSE,FS autapse,rat,I,110,9,9.7,1.1,40 APs (200Hz)
+Jiang et al.,2012,FALSE,FALSE,FS-PC,rat,I,36.8,4.4,1.8,0.3,20 APs (200Hz)
+Jiang et al.,2012,FALSE,FALSE,FS-PC,rat,I,79.5,8.5,5.9,0.9,40 APs (200Hz)
+Jiang et al.,2012,TRUE,TRUE,FS autapse,rat,I,180,21,15.4,1.9,40 APs (200Hz)
+Jiang et al.,2012,FALSE,TRUE,FS-PC,rat,I,126,16,9.6,1.7,40 APs (200Hz)
+Li et al.,2021,TRUE,FALSE,PC autapse,mouse,E,157,31,5.91,1.78,8 pulses (50Hz)
+Li et al.,2021,TRUE,FALSE,PC autapse,mouse,E,208,37,,,15 pulses (100Hz)
+Li et al.,2021,TRUE,FALSE,PC autapse,mouse,E,158,17,9.37,1.5,n/a
+Li et al.,2021,FALSE,FALSE,PC-PC,mouse,E,74,16,3.63,0.96,n/a

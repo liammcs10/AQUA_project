@@ -1,0 +1,21 @@
+Author,Year,autapse,neuron type,E/I,peak current (pA),peak current (pA)_std,CV aEPSC,CV aEPSC_std,failure rate,failure rate_std,onset latency (ms),onset latency (ms)_std,rise time (ms),rise time (ms)_std,decay time (ms),decay time (ms)_std,probability of release,probability of release_std,paired-pulse ratio,paired-pulse ratio_std
+Yin et al.,2018,TRUE,PC,E,149,11,0.25,0.01,0.03,0.01,1.94,0.05,0.99,0.02,4.63,0.11,0.53,0.03,0.74 (20Hz),0.06 (20Hz)
+Yin et al.,2018,FALSE,PC-PC,E,28.6,4.9,0.37,0.01,0.11,0.02,1.61,0.08,0.85,0.05,5.23,0.50,0.32,0.03,1.11 (20Hz),0.08 (20Hz)
+Bacci et al.,2003,TRUE,FS,I,-352.3,70.9,0.32,0.03,0.03,0.001,1.20,0.03,0.56,0.04,6.8,1.2,n/a,,0.7 (33Hz),0.07 (33Hz)
+Deleuze et al.,2019,TRUE,PV,I,-451.82,43.14,,,,,,,,,3.69,0.16,0.77,0.03,0.64,0.05
+Deleuze et al.,2019,FALSE,PV-PC,I,-146.87,20.89,,,,,,,,,7.30,0.16,,,
+Deleuze et al.,2019,FALSE,PV-PV,I,-246.11,36.15,,,,,,,,,4.13,0.28,,,
+Smith & Jahr,2002,TRUE,PG cells,I,-284,263,,,,,15.0,4.5,202.0,191.9,,,
+Pan et al.,2025,TRUE,PCs,E,132.03,16.05,,,,,,,,,5.48,0.45,,,
+Pouzat & Marty,1998,TRUE,,I,-12.5,2.3,,0.8,0.04,,,1.81,0.13,10.1,0.9,,,
+Pouzat & Marty,1998,FALSE,,I,-56,22,,0.62,0.05,,,1.65,0.12,9.3,,,,
+Karayannis et al.,2010,TRUE,NGFC,I,-114.1,12.5,,,,3.39,0.32,70.7,3.5,,,
+Karayannis et al.,2010,FALSE,NGFC,I,-85,9.6,,,,3.69,0.34,60.3,4.7,,,
+Jiang et al.,2012,TRUE,FS,I,-255.8,53.6,,0.003,0.0003,0.84,0.07,0.59,0.08,3.9,0.5,,,
+Jiang et al.,2012,FALSE,FS-FS,I,-58.1,13.5,,0.013,0.005,0.95,0.11,0.78,0.03,4.5,0.6,,,
+Jiang et al.,2012,FALSE,FS-PC,I,-90.9,10.2,,0.003,0.0003,1.00,0.04,0.79,0.04,8.5,0.7,,,
+Jiang et al.,2015,TRUE,FS (juvenile),I,-256,40,0.25,0.04,0,0,1.30,0.15,0.64,0.08,3.5,0.4,,1.08,0.09
+Jiang et al.,2015,FALSE,FS-PC (juvenile),I,-118,16.9,0.35,0.03,0.5,0.3,0.81,0.04,1.06,0.09,9.9,0.6,,1.04,0.07
+Jiang et al.,2015,TRUE,FS (adult),I,-178,30,0.41,0.04,0.2,0.1,0.89,0.07,0.43,0.06,2.0,0.2,,1.05,0.05
+Jiang et al.,2015,FALSE,FS-PC (adult),I,-61.4,13.2,0.5,0.04,0.1,0.1,0.82,0.04,0.86,0.04,7.3,0.3,,1.31,0.13
+Connelly & Lees,2010,TRUE,FS,I,-560,188,,,,3.1,0.1,2.2,0.2,0.64,,0.76,0.04
