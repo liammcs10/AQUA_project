@@ -15,6 +15,8 @@ simulations relatively fast.
 """
 
 import sys
+import os
+import tempfile
 
 from aqua.AQUA_general import AQUA
 from aqua.batchAQUA_general import *
@@ -129,7 +131,7 @@ def sim(args, conf):
     gain_modulation(params_df, conf)
 
     # Test 2 - gain modulation on biexponential autapse in brian2
-    # gain_modulation_biexponential(params_df, conf)
+    gain_modulation_biexponential(params_df, conf)
 
     # Test 3 - STA
     # calculate_STA(params_df, conf)
@@ -337,11 +339,9 @@ def gain_modulation_biexponential(params_df, conf):
     # convert config values to float
     conf["Gain"] = cast_to_float(conf["Gain"])
     conf["Gain"]["N_I"] = int(conf["Gain"]["N_I"])
-    conf["Gain"]["N_per_loop"] = int(conf["Gain"]["N_per_loop"])
 
-    N_per_loop = conf["Gain"]["N_per_loop"]     # number of neurons per loop (to address memory issues)
     N_neurons = len(params_df)                  # number of different neuron parameters
-    
+
     # time
     T = float(conf["Gain"]["T"])
     dt = float(conf["Gain"]["dt"])
@@ -349,10 +349,8 @@ def gain_modulation_biexponential(params_df, conf):
 
     # range of injected currents values
     I_range = np.linspace(conf["Gain"]["I_start"], conf["Gain"]["I_stop"], conf["Gain"]["N_I"])
-    # build injected current array
-    delay = conf["Gain"]["delay"]
-    y_0 = conf["Gain"]["y_0"]
-    I_inj = np.array([step_current(N_iter, dt, y_0, delay, I_h) for I_h in I_range for n in range(N_neurons)])
+    # step current heights (injected currents are built inside each batch)
+    I_heights = np.array([I_h for I_h in I_range for _ in range(N_neurons)])
 
     # number of simulations that ultimately need to be run
     N_sims = N_neurons * conf["Gain"]["N_I"]
@@ -367,83 +365,44 @@ def gain_modulation_biexponential(params_df, conf):
     t_a2_arr = 1/np.array(sim_params['e'])
     t_a2_arr[t_a2_arr == np.inf] = 2.         # remove infinities where there is no autapse, replace with any number since f = 0
     Aut_peak = np.array(sim_params['f'])      # peak current of the biexponential autapse
-    
-    # somewhere to store the outputs
-    output_dict = {
-        'e': [],
-        'f': [],
-        'tau': [],
-        'autapse current': [],
-        'autapse delay': [],
-        'I_h': [],
-        'F_instant': [],
-        'F_steady': []
-    }
+
+    #calculate N_per_loop to fit in RAM
+    N_cores = 6
+    N_per_loop = int((30 * 0.7 * 1e9)/(N_cores * N_iter * 8))
 
     # start looping over the simulations
-    N_loops = N_sims // N_per_loop
-    for n in range(N_loops):
-        if n == N_loops - 1:
-            N_in_loop = N_sims - (N_loops - 1)*N_per_loop
-        else:
-            N_in_loop = N_per_loop
+    N_loops = math.ceil(N_sims / N_per_loop)
 
-        # get proper indices
-        idx_start = n * N_per_loop
-        idx_end = idx_start + N_in_loop
+    # submit to joblib to parallelise
+    results = Parallel(n_jobs=4)(
+        delayed(run_single_simulation_batch_biexp)(
+            sim_params.iloc[n * N_per_loop : (n+1) * N_per_loop],
+            I_heights[n * N_per_loop : (n+1) * N_per_loop],
+            t_a1_arr[n * N_per_loop : (n+1) * N_per_loop],
+            t_a2_arr[n * N_per_loop : (n+1) * N_per_loop],
+            Aut_peak[n * N_per_loop : (n+1) * N_per_loop],
+            conf, N_iter, dt, T
+            ) for n in range(N_loops)
+    )
 
-        # initialise
-        x_start = np.full((N_in_loop, 3), fill_value = np.array([conf["Neuron"]["c"], 0, 0]))
-        t_start = np.zeros(N_in_loop)
+    # reconstruct the output dataframe from each parallel batch
+    spikes = []
+    dfs = []
+    for res in results:
+        for sp in res['spikes']:
+            spikes.append(list(sp))
 
-        # create batch and initialise
-        batch = batchAQUA(sim_params[idx_start:idx_end])
-        batch.Initialise(x_start, t_start)
+        del res['spikes']
 
+        temp_df = pd.DataFrame(res)
 
-        # convert injected currents to brian2
-        I_injTA = TimedArray(values = I_inj[idx_start:idx_end, :].T, dt = dt*ms, name = 'I_injTA')    # inputs as a TimedArray
+        dfs.append(temp_df)
 
-        # convert batch to brian2
-        G, autapses = batch.meetBrian(stimulus_name = I_injTA, autapse_type = 'biexponential', t_a1 = t_a1_arr[idx_start:idx_end], t_a2 = t_a2_arr[idx_start:idx_end], I_peak = Aut_peak[idx_start:idx_end])
+    # add all data to one dataframe
+    output_df = pd.concat(dfs, ignore_index = True)
 
-        # simulation timestep
-        defaultclock.dt = dt*ms
-        M_v = StateMonitor(G, 'v', record = 0)
-        M_w = StateMonitor(G, 'w', record = 0)
-        spikemon = SpikeMonitor(G, record = True)
-        net = Network(G, autapses, M_v, M_w, spikemon)
-
-        # run simulation
-        net.run(T*ms)
-
-        spikes = convert_spikes_to_aqua(spikemon.spike_trains())
-
-        """ - - - from this point analyse from spike times and start building output df - - - """
-        # quantifying autapse values -> don't correspond to biexponential autapse but still differentiate all neurons...
-        autapse_current = np.array(batch.get_net_autapse_current_biexponential(t1 = t_a1_arr[idx_start:idx_end], t2 = t_a2_arr[idx_start:idx_end], I_peak = Aut_peak[idx_start:idx_end]))
-        autapse_delay = np.array(batch.get_mean_autapse_delays())
-
-        # brian2 output needs to be converted here...
-        F_instant = get_F(spikes, instant = True)
-        F_steady = get_F(spikes, instant = False)
-
-
-        # store the data
-        output_dict["e"].append(sim_params['e'][idx_start:idx_end].to_numpy())
-        output_dict["f"].append(sim_params['f'][idx_start:idx_end].to_numpy())
-        output_dict["tau"].append(sim_params['tau'][idx_start:idx_end].to_numpy())
-        output_dict["autapse current"].append(autapse_current)
-        output_dict["autapse delay"].append(autapse_delay)
-        output_dict["I_h"].append(I_inj[idx_start:idx_end, -1])
-        output_dict["F_instant"].append(F_instant)
-        output_dict["F_steady"].append(F_steady)
-
-
-    for key in output_dict.keys():
-        output_dict[key] = np.hstack(output_dict[key])
-
-    output_df = pd.DataFrame(output_dict)
+    # pad the final spikes list and convert to numpy
+    spike_arr = pad_list(spikes)
 
     # save the results dict as a pickle
     name = conf['Neuron']['name']
@@ -452,6 +411,85 @@ def gain_modulation_biexponential(params_df, conf):
     filepath = f"{name}_{mode}_biexp//{name}_{mode}_biexp{file_sign}"
     with open(filepath, 'wb') as file:
         pickle.dump(output_df, file)
+
+    #save spikes
+    filepath = f"{name}_{mode}//{name}_{mode}_SPIKES.pickle"
+    with open(filepath, 'wb') as file:
+        pickle.dump(spike_arr, file)
+
+
+def run_single_simulation_batch_biexp(sim_params, I_heights, t_a1_batch, t_a2_batch, I_peak_batch, conf, N_iter, dt, T):
+    '''
+    Batch simulation protocol for joblib parallelization using the brian2 model
+    with a biexponential autapse.
+
+    '''
+    # separate cython cache per worker process to avoid compile clashes under joblib
+    prefs.codegen.runtime.cython.cache_dir = os.path.join(tempfile.gettempdir(), "brian_cache", f"worker_{os.getpid()}")
+    prefs.codegen.runtime.cython.multiprocess_safe = True
+
+    N_in_loop = len(sim_params)
+
+    # Initialise
+    x_start = np.full((N_in_loop, 3), fill_value = np.array([conf["Neuron"]["c"], 0, 0]))
+    t_start = np.zeros(N_in_loop)
+
+    # Create I_inj
+    y_0 = conf["Gain"]["y_0"]
+    delay = conf["Gain"]["delay"]
+    I_inj = np.array([step_current(N_iter, dt, y_0, delay, I_h) for I_h in I_heights])
+
+    # create batch and initialise
+    batch = batchAQUA(sim_params)
+    batch.Initialise(x_start, t_start)
+
+    # convert injected currents to brian2
+    I_injTA = TimedArray(values = I_inj.T, dt = dt*ms, name = 'I_injTA')    # inputs as a TimedArray
+
+    # convert batch to brian2
+    G, autapses = batch.meetBrian(stimulus_name = I_injTA, autapse_type = 'biexponential', t_a1 = t_a1_batch, t_a2 = t_a2_batch, I_peak = I_peak_batch)
+
+    # simulation timestep
+    defaultclock.dt = dt*ms
+    M_v = StateMonitor(G, 'v', record = 0)
+    M_w = StateMonitor(G, 'w', record = 0)
+    spikemon = SpikeMonitor(G, record = True)
+    net = Network(G, autapses, M_v, M_w, spikemon)
+
+    # run simulation
+    net.run(T*ms)
+
+    spikes = convert_spikes_to_aqua(spikemon.spike_trains())
+
+    """ - - - from this point analyse from spike times and start building output df - - - """
+    # quantifying autapse values -> don't correspond to biexponential autapse but still differentiate all neurons...
+    autapse_current = np.array(batch.get_net_autapse_current_biexponential(t1 = t_a1_batch, t2 = t_a2_batch, I_peak = I_peak_batch))
+    autapse_delay = np.array(batch.get_mean_autapse_delays())
+
+    F_instant = get_F(spikes, instant = True)
+    F_steady = get_F(spikes, instant = False)
+
+    # get isi distribution values
+    bins = 50
+    x_range = (0, 150)
+    num_peaks = get_num_peaks(spikes, bins = bins, range = x_range, prominence_fraction = 0.2, distance = 1)
+    # get entropy
+    spike_entropy = get_entropy(spikes, bins = bins, range = x_range)
+
+    # Return a dictionary of results for THIS batch
+    return {
+        "e": sim_params['e'].to_numpy(),
+        "f": sim_params['f'].to_numpy(),
+        "tau": sim_params['tau'].to_numpy(),
+        "autapse current": autapse_current,
+        "autapse delay": autapse_delay,
+        "I_h": I_inj[:, -1],
+        "F_instant": F_instant,
+        "F_steady": F_steady,
+        "spikes": spikes,
+        "num_frequencies": num_peaks,
+        "entropy": spike_entropy
+    }
 
 
 def calculate_STA(params, conf):
