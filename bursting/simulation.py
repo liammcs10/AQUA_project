@@ -413,7 +413,7 @@ def gain_modulation_biexponential(params_df, conf):
         pickle.dump(output_df, file)
 
     #save spikes
-    filepath = f"{name}_{mode}//{name}_{mode}_SPIKES.pickle"
+    filepath = f"{name}_{mode}//{name}_{mode}_biexpSPIKES.pickle"
     with open(filepath, 'wb') as file:
         pickle.dump(spike_arr, file)
 

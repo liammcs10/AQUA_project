@@ -32,7 +32,7 @@ def get_F(spikes, instant = False):
 
     return F
 
-def get_num_peaks(spikes, bins = 300, range = (0, 150), prominence_fraction = None, distance = None):
+def get_num_peaks(spikes, bins = 50, range = (0, 150), prominence_fraction = None, distance = None):
     """
     returns the number of isi peaks for each neuron in 'spikes'
     """
