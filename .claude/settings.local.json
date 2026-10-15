@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(S=/home/liam/.claude/plugins/cache/claude-plugins-official/mattpocock-skills/1.2.3/skills/engineering/setup-matt-pocock-skills && mkdir -p docs/agents && cp \"$S/issue-tracker-local.md\" docs/agents/issue-tracker.md && cp \"$S/triage-labels.md\" docs/agents/triage-labels.md && cp \"$S/domain.md\" docs/agents/domain.md && ls docs/agents)"
     ],
     "deny": [
       "Bash(git commit*)",
