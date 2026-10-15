@@ -202,7 +202,7 @@ def gain_modulation(params_df, conf):
     }
 
     #calculate N_per_loop to fit in RAM
-    N_cores = 6
+    N_cores = 3
     N_per_loop = int((30 * 0.7 * 1e9)/(N_cores * N_iter * 8))
     #N_per_loop = 1000
     #print(f'N_per_loop: {N_per_loop}')
