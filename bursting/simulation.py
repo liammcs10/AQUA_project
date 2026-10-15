@@ -128,7 +128,7 @@ def sim(args, conf):
 
     """ RUN THE ANALYSES BELOW - define functions at the end of this script/in a different script"""
     # Test 1 - gain modulation on the AQUA batch
-    gain_modulation(params_df, conf)
+    #gain_modulation(params_df, conf)
 
     # Test 2 - gain modulation on biexponential autapse in brian2
     gain_modulation_biexponential(params_df, conf)
@@ -245,12 +245,13 @@ def gain_modulation(params_df, conf):
     name = conf['Neuron']['name']
     mode = conf['Autapse']['mode']
     file_sign = conf['Gain']['outfile']
-    filepath = f"{name}_{mode}//{name}_{mode}{file_sign}"
+    filepath = f"./{name}_{mode}/{name}_{mode}{file_sign}"
+    print(f"FILEPATH: {filepath}")
     # save dataframe 
     with open(filepath, 'wb') as file:
         pickle.dump(output_df, file)
     #save spikes
-    filepath = f"{name}_{mode}//{name}_{mode}_SPIKES.pickle"
+    filepath = f"./{name}_{mode}/{name}_{mode}_SPIKES.pickle"
     with open(filepath, 'wb') as file:
         pickle.dump(spike_arr, file)
     
@@ -367,21 +368,21 @@ def gain_modulation_biexponential(params_df, conf):
     Aut_peak = np.array(sim_params['f'])      # peak current of the biexponential autapse
 
     #calculate N_per_loop to fit in RAM
-    N_cores = 6
-    N_per_loop = int((30 * 0.7 * 1e9)/(N_cores * N_iter * 8))
+    N_cores = 2
+    N_per_loop = int((30 * 0.2 * 1e9)/(N_cores * N_iter * 8))
 
     # start looping over the simulations
     N_loops = math.ceil(N_sims / N_per_loop)
 
     # submit to joblib to parallelise
-    results = Parallel(n_jobs=4)(
+    results = Parallel(n_jobs=N_cores)(
         delayed(run_single_simulation_batch_biexp)(
             sim_params.iloc[n * N_per_loop : (n+1) * N_per_loop],
             I_heights[n * N_per_loop : (n+1) * N_per_loop],
             t_a1_arr[n * N_per_loop : (n+1) * N_per_loop],
             t_a2_arr[n * N_per_loop : (n+1) * N_per_loop],
             Aut_peak[n * N_per_loop : (n+1) * N_per_loop],
-            conf, N_iter, dt, T
+            conf, N_iter, dt, T, n
             ) for n in range(N_loops)
     )
 
@@ -418,7 +419,7 @@ def gain_modulation_biexponential(params_df, conf):
         pickle.dump(spike_arr, file)
 
 
-def run_single_simulation_batch_biexp(sim_params, I_heights, t_a1_batch, t_a2_batch, I_peak_batch, conf, N_iter, dt, T):
+def run_single_simulation_batch_biexp(sim_params, I_heights, t_a1_batch, t_a2_batch, I_peak_batch, conf, N_iter, dt, T, batch_idx):
     '''
     Batch simulation protocol for joblib parallelization using the brian2 model
     with a biexponential autapse.
@@ -476,6 +477,23 @@ def run_single_simulation_batch_biexp(sim_params, I_heights, t_a1_batch, t_a2_ba
     # get entropy
     spike_entropy = get_entropy(spikes, bins = bins, range = x_range)
 
+    """
+    # 2. Save heavy outputs to disk directly inside the worker process
+    output_path = os.path.join('./temp/', f"batch_{batch_idx}.npz")
+    np.savez_compressed(
+        output_path,
+        time=time_array,
+        v_m=v_m_array,
+        spikes=spike_times
+    )
+    
+    # 3. Explicitly delete heavy arrays to free memory inside worker
+    del time_array, v_m_array, spike_times
+    
+    # 4. Return lightweight metadata/path only
+    return {"batch_idx": batch_idx, "file_path": output_path, "status": "success"}
+    """
+
     # Return a dictionary of results for THIS batch
     return {
         "e": sim_params['e'].to_numpy(),
@@ -490,6 +508,8 @@ def run_single_simulation_batch_biexp(sim_params, I_heights, t_a1_batch, t_a2_ba
         "num_frequencies": num_peaks,
         "entropy": spike_entropy
     }
+    
+
 
 
 def calculate_STA(params, conf):
