@@ -355,9 +355,9 @@ def discover_and_analyze_isi_peaks(spikes, counts, bin_edges, max_peaks=5):
         The maximum number of peaks you realistically expect to find.
     """
     # 1. Recreate the underlying sample distribution from the histogram counts
-    #bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    #simulated_data = np.repeat(bin_centers, counts.astype(int)).reshape(-1, 1)
-    simulated_data =  spikes[~np.isnan(spikes)].reshape(-1, 1)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    simulated_data = np.repeat(bin_centers, counts.astype(int)).reshape(-1, 1)
+    #simulated_data =  spikes[~np.isnan(spikes)].reshape(-1, 1)
     
 
     if len(simulated_data) == 0:
