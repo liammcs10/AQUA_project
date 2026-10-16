@@ -9,17 +9,26 @@ The question: Based on the spiking activity alone, is it possible to estimate th
 
 - What happens if multiple change points are present? 
 
+ALGORITHMS:
+    - OFFLINE:
+        - FLUSS, SST, ESST...
+    - ONLINE:
+        - CUSUM, or neuron-based versions?
+
+
 PARAMETERS TO VARY:
 - The change in the mean (** CAN ALSO ADJUST THE STARTING CURRENT VALUE **)
 - Variance of the noise (** WE CAN ALSO VARY THE TYPE OF NOISE **)
-- autapse parameters
+- compare across autapse parameters
 - window size of the fluss_detector (How does it fare with more or less data to compare...?)
 
+ALT. QUESTIONS:
+    - what happens if multiple change points are present?
+    - window size of the FLUSS detector
 
 OUTPUTS:
 
 Psychometric curve - does the autapse shift the curve to the left or right?
-
 Distribution of change point times - Does the autapse give a better estimate overall?
 
 """

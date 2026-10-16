@@ -6,7 +6,6 @@ Key points:
   - Important metrics: estimated change point time, CAC (or 'confidence')
 
 
-
 The autapse may change output firing patterns in such a way that the FLUSS algorithm can identify
 the change point from membrane potential data directly. 
 
@@ -17,7 +16,7 @@ INITIAL FINDINGS:
   CPA_data_N10.PICKLE
     - 10 repeats for noise values. Noise is sampled at 10,000 Hz!
     - There is a critical value of the autapse parameter where the change point detection is optimal
-    and performs better than other autapse parameter values. This is due to the step offering a transition from tonic -> bursting - PURELY COINCIDENCE.
+    and performs better than other autapse parameter values. This is due to the step offering a transition from tonic -> bursting - PURELY COINCIDENCE?
     - Area at this value reaches it maximum, equivalent to higher autapse strengths despite the decrease in activity corresponding to 
     slightly higher step heights.
     - This critical value aligns with the 'bursting' regime and is slightly above the experimentally recorded value. 
@@ -39,3 +38,8 @@ METRICS:
     - somehow estimate the confidence of the change time estimate? Maybe by Combining CP and CAC??
 
 
+OTHER THOUGHTS:
+  - anomaly detection is important for predictive coding? I.e. identify an unanticipated event and signal for change...
+  - implications for 'decision making' or 'categorisation convergence' type tasks? Where the neuron
+  now has to convince other neurons that a process has happened...?
+  - Implications for control systems. Anomalies must be detected to initiate control protocols... Related to above problems. 

@@ -28,6 +28,6 @@ def CUSUM_mean(Y, threshold, variance):
             tau = t             # update change point
         
     if C_max/variance > threshold:
-        return tau, C_max, C_2          # changepiont above threshold
+        return tau, C_max, C_2          # changepoint above threshold
     else:
         return None, C_max, C_2         # no changepoint detected
