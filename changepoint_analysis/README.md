@@ -26,7 +26,7 @@ Runs the full parameter sweep and saves one results table.
 
 Change these arrays in `main()` to run a different sweep.
 
-### 2. Stimulus (`simulate()`)
+### 2. Stimulus (`simulate_w_fluss()`)
 
 - Duration T = 3000 ms, time step dt = 0.1 ms.
 - The current starts at I_0 = 60 pA and steps to I_0 + h at **1500 ms** (built with `step_current`).
@@ -35,7 +35,7 @@ Change these arrays in `main()` to run a different sweep.
 
 ### 3. Simulation
 
-For each repeat, every combination (variance × step height × `f`) is simulated in one `batchAQUA` batch, starting from state `[-60, 0, 0]`.
+For each repeat, every combination (variance × step height × `f`) is simulated in one `batchAQUA` batch, starting from state `[-60, 0, 0]`. Neurons are ordered with variance outermost, then step height, then `f` (use `find_idx()` to look one up).
 
 ### 4. Change point detection (`process_single_row()` in `CP_functions.py`)
 
@@ -71,9 +71,10 @@ Requires `aqua`, `stumpy`, `changepoynt`, `joblib`, `pandas`, `seaborn` and `tqd
 
 Imported into `CPA_with_AQUA.py` with `from CP_functions import *`. The notebooks get them through `from CPA_with_AQUA import *`.
 
+- `find_idx(f, v, h, f_vals, v_vals, h_vals)` returns the row index of the neuron with autapse strength `f`, variance `v` and step height `h` in a batch built by `simulate_w_fluss()`. Used by `CPA_TRACES_with_AQUA.ipynb` to pull out single traces.
 - `process_single_row(row_idx, data_matrix, window_size, dt)` runs FLUSS on one voltage trace and returns `(CAC, change point)` (step 4 above).
 - `psychometric_curve(data, x, y, hue='autapse f', ...)` plots mean ± SD of a metric (e.g. CAC) against step height, one line per value of `hue`, with a colourbar. Used by `AQUA_CPA_plots.ipynb`.
-- `changepoint_distribution()` is an empty placeholder.
+- `changepoint_distribution(data, x='change point', row='autapse f', col='variance', ...)` draws a grid of histograms of the estimated change point times (rows = autapse strength, columns = noise variance), coloured by autapse strength, with a dashed line at the true change (1500 ms). Accepts optional `fig`/`ax` and returns `(fig, ax)`. Used by `AQUA_CPA_plots.ipynb`.
 
 ## Other files
 

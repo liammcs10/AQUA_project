@@ -26,7 +26,7 @@ INITIAL FINDINGS:
     - No longer the bump in performance at moderate autapse strengths. 
     - Performance (AUC) increases up to moderate f, then decreases between 
     f = {200-300} and increases again up to f = 350, then decreases...
-    - Something strange is going on at f = 400. This is due to the neuron being in a CHAOTIC regime
+    - Performance decreases at 400 due to the neuron being a new regime. This is due to the neuron being in a CHAOTIC regime
     before the step and transitioning to tonic firing after - PURELY COINCIDENCE.
     - Some neurons see a drop in performance despite a larger step height - This is due to long high-frequency 
     transients after the step, the changepoint is then assigned to the end of this transient.
