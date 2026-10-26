@@ -474,3 +474,51 @@ def llr_pair_cp(isi, t_isi, dist_pre, dist_post, clip = 10, return_trace = False
     if return_trace:
         return CP, score, t_curr, l, s
     return CP, score
+
+
+# ---------------------------------------------------------------------------
+# Evidence rates and divergences for the LLR methods (nats)
+# ---------------------------------------------------------------------------
+
+def evidence_rate(t, l, isi_scored, CP):
+    '''
+    Score per second for one trial: evidence accumulated per unit time on each side of the CP,
+        sum(l after) / time after  -  sum(l before) / time before        [nats / s]
+    = mean(l) x firing rate on each side.
+    IN
+        t, l:        trace from llr_cp / llr_pair_cp (end time and LLR of each scored ISI)
+        isi_scored:  the ISIs those l values belong to [ms]
+        CP:          estimated changepoint (= t of the last pre-change ISI)
+    '''
+    if len(l) < 2 or not np.isfinite(CP):
+        return np.nan
+    k = np.searchsorted(t, CP)
+    before = l[:k + 1].sum() / isi_scored[:k + 1].sum()
+    after = l[k + 1:].sum() / isi_scored[k + 1:].sum()
+    return (after - before) * 1000.          # per ms -> per s
+
+
+def jeffreys_divergence(dist_pre, dist_post, pre_ref, post_ref, pairs = False):
+    '''
+    Symmetric KL (Jeffreys) divergence between the fitted pre and post distributions, estimated
+    on the reference data (unclipped):
+        J = KL(post || pre) + KL(pre || post)
+    with KL(post || pre) = mean over post_ref of [log p_post - log p_pre], and vice versa.
+    For pairs = True the conditional densities p(ISI_n | ISI_{n-1}) are used (references of shape (n, 2)).
+    OUT
+        J:      nats per ISI
+        J_s:    nats per second, KL(post||pre) x post rate + KL(pre||post) x pre rate
+    '''
+    if dist_pre is None or dist_post is None or len(pre_ref) == 0 or len(post_ref) == 0:
+        return np.nan, np.nan
+    if pairs:
+        lp = lambda dist, ref: dist.logpdf_cond(ref[:, 0], ref[:, 1])
+        isi_pre, isi_post = pre_ref[:, 1], post_ref[:, 1]
+    else:
+        lp = lambda dist, ref: dist.logpdf(ref)
+        isi_pre, isi_post = pre_ref, post_ref
+    kl_post_pre = np.mean(lp(dist_post, post_ref) - lp(dist_pre, post_ref))
+    kl_pre_post = np.mean(lp(dist_pre, pre_ref) - lp(dist_post, pre_ref))
+    J = kl_post_pre + kl_pre_post
+    J_s = (kl_post_pre / isi_post.mean() + kl_pre_post / isi_pre.mean()) * 1000.
+    return J, J_s

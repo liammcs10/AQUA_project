@@ -345,25 +345,37 @@ def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
 def _cusum_condition(trials, changepoint, n_isi, stride, t_discard, method = 'ks'):
     """
     Builds the references for one condition and finds the CP for each of its repeats.
-    Returns (list of (CP, score), pre family, post family); families are None for 'ks'.
+    Returns (list of (CP, score, score per s), pre family, post family, (divergence, divergence per s)).
+    Families and the per-second / divergence values are None / NaN for 'ks'.
     """
     isis = [spike_isis(s, t_discard) for s in trials]
     pre_ref, post_ref = reference_isis(isis, changepoint)
 
     if method == 'ks':
-        res = [ks_window_cp(isi, t_isi, pre_ref, post_ref, n_isi, stride) for isi, t_isi in isis]
-        return res, None, None
+        res = [ks_window_cp(isi, t_isi, pre_ref, post_ref, n_isi, stride) + (np.nan,) for isi, t_isi in isis]
+        return res, None, None, (np.nan, np.nan)
+
     if method == 'llr':
         dist_pre, name_pre, _ = fit_isi_distribution(pre_ref)
         dist_post, name_post, _ = fit_isi_distribution(post_ref)
-        res = [llr_cp(isi, t_isi, dist_pre, dist_post) for isi, t_isi in isis]
-        return res, name_pre, name_post
+        div = jeffreys_divergence(dist_pre, dist_post, pre_ref, post_ref)
+        res = []
+        for isi, t_isi in isis:
+            CP, score, t, l, _ = llr_cp(isi, t_isi, dist_pre, dist_post, return_trace = True)
+            res.append((CP, score, evidence_rate(t, l, isi, CP)))
+        return res, name_pre, name_post, div
+
     if method == 'llr_pair':
         pre_pairs, post_pairs = reference_pairs(isis, changepoint)
         dist_pre, name_pre, _ = fit_isi_pair_distribution(pre_pairs)
         dist_post, name_post, _ = fit_isi_pair_distribution(post_pairs)
-        res = [llr_pair_cp(isi, t_isi, dist_pre, dist_post) for isi, t_isi in isis]
-        return res, name_pre, name_post
+        div = jeffreys_divergence(dist_pre, dist_post, pre_pairs, post_pairs, pairs = True)
+        res = []
+        for isi, t_isi in isis:
+            CP, score, t, l, _ = llr_pair_cp(isi, t_isi, dist_pre, dist_post, return_trace = True)
+            res.append((CP, score, evidence_rate(t, l, isi[1:], CP)))
+        return res, name_pre, name_post, div
+
     raise ValueError(f"method must be 'ks', 'llr' or 'llr_pair', not {method!r}")
 
 
@@ -389,12 +401,17 @@ def cusum_analysis(spikes, f_values, d_H, var, N_repeats, n_isi, changepoint, st
 
     window = n_isi if method == 'ks' else np.nan
     rows = []
-    for (v, h, f), (res, name_pre, name_post) in zip(conditions, results):
-        for rep, (CP, score) in enumerate(res):
-            rows.append([rep, v, h, f, window, score, CP, method, name_pre, name_post])
+    for (v, h, f), (res, name_pre, name_post, (J, J_s)) in zip(conditions, results):
+        for rep, (CP, score, score_s) in enumerate(res):
+            rows.append([rep, v, h, f, window, score, CP, method, name_pre, name_post,
+                         score_s, J, J_s])
 
+    # LLR methods only (NaN for 'ks'), all in nats:
+    #   score per s:       evidence rate in this trial, mean(l) x firing rate on each side of the CP
+    #   divergence:        Jeffreys divergence of the fitted pre/post distributions, per ISI (unclipped)
+    #   divergence per s:  the same weighted by the pre/post firing rates
     cols = ['N', 'variance', 'step_height', 'autapse f', 'ISI window', 'score', 'change point',
-            'method', 'pre dist', 'post dist']
+            'method', 'pre dist', 'post dist', 'score per s', 'divergence', 'divergence per s']
     return pd.DataFrame(rows, columns = cols)
 
 

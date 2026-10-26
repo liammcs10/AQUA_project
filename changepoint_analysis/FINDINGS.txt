@@ -31,6 +31,18 @@ INITIAL FINDINGS:
     - Some neurons see a drop in performance despite a larger step height - This is due to long high-frequency 
     transients after the step, the changepoint is then assigned to the end of this transient.
 
+CUSUM with log-likelihood estimation:
+    - each neuron condition is run several times. Pre- and post-CP ISIs are pooled and the best fit kde is estimated from a
+    range of options including log-gaussian mixture models and ISI pair dependence (bursting).
+    - Roughly around the bursting transition, change point detection seems to steadily degrade as the autapse strenght increases.
+    ** Need to establish if this is due to the KDE estimation degrading -> This affects the results because the log-likelihood
+    is flawed. 
+    ** Is there bias from having different distributions at every stage? Probably not.
+    ** Maybe the AUC metric is flawed? It doesn't seem like it actually... What does the score represent?
+    ** score represents the *evidence* that the ISI belongs to post. Maybe the autapse makes the neuron too noisy? 
+       if the distribution is broader maybe an ISI carries less information? The standard RS neuron might have a tighter
+       distribution.
+
 
 METRICS:
     - amount of confidence versus variance?
