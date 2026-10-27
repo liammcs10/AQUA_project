@@ -14,6 +14,8 @@ Usage
     python main.py --config RS_config.ini [--save]
 """
 
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -163,12 +165,17 @@ def main():
     )
 
     if args.save:
-        autaptic_time_series_fig.savefig(output["autaptic_time_series"], dpi=dpi)
-        non_autaptic_time_series_fig.savefig(output["non_autaptic_time_series"], dpi=dpi)
-        phase_fig.savefig(output["phase_plot"], dpi=dpi)
-        print(f"Saved autaptic time-series plot to {output['autaptic_time_series']}")
-        print(f"Saved non-autaptic time-series plot to {output['non_autaptic_time_series']}")
-        print(f"Saved phase plot to {output['phase_plot']}")
+        # Save every figure as both SVG and PNG, whatever suffix the config uses
+        for fig, key in [
+            (autaptic_time_series_fig, "autaptic_time_series"),
+            (non_autaptic_time_series_fig, "non_autaptic_time_series"),
+            (phase_fig, "phase_plot"),
+        ]:
+            for suffix in (".svg", ".png"):
+                fig.savefig(Path(output[key]).with_suffix(suffix), dpi=dpi)
+        print(f"Saved autaptic time-series plot to {output['autaptic_time_series']} (.svg + .png)")
+        print(f"Saved non-autaptic time-series plot to {output['non_autaptic_time_series']} (.svg + .png)")
+        print(f"Saved phase plot to {output['phase_plot']} (.svg + .png)")
 
     if "agg" not in plt.get_backend().lower():
         plt.show()

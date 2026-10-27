@@ -112,8 +112,8 @@ def calculate_nullclines(v, w, I, p):
     W = w * np.ones(len(v))
     I_inj = I * np.ones(len(v))
 
-    v_null = (1 / p["C"]) * (p["k"] * (v - p["v_r"]) * (v - p["v_t"]) + W + I_inj)
-    u_null = p["a"] * (p["b"] * (v - p["v_r"]))
+    v_null = p["k"] * (v - p["v_r"]) * (v - p["v_t"]) + W + I_inj
+    u_null = p["b"] * (v - p["v_r"])
 
     return v_null, u_null
 
@@ -334,6 +334,8 @@ def plot_phase_grid(
     """
     n_cols = len(snapshot_indices)
     n_rows = len(row_specs)
+    # Finer v-axis for the nullclines only, so the parabola is smooth
+    v_fine = np.linspace(v_min, v_max, 500)
 
     fig, axes = plt.subplots(
         n_rows,
@@ -363,8 +365,8 @@ def plot_phase_grid(
             plot_flow(v_grid, u_grid, dv, du, fig=fig, ax=ax, density=density, linewidth=linewidth)
 
             if show_nullclines:
-                v_null, u_null = calculate_nullclines(v_lin, w_delivered, I_inj, params)
-                plot_nullclines(v_null, u_null, v_lin, u_lin, fig=fig, ax=ax)
+                v_null, u_null = calculate_nullclines(v_fine, w_delivered, I_inj, params)
+                plot_nullclines(v_null, u_null, v_fine, u_lin, fig=fig, ax=ax)
 
             collection = plot_time_gradient(x_trace, t_trace, split)
             collection.set_label("trajectory")
