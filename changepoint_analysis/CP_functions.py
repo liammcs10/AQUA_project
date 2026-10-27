@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import stumpy
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -96,7 +97,7 @@ def changepoint_distribution(data, x = 'change point', row = 'autapse f', col = 
                                sharex = True, sharey = True, squeeze = False)
     ax = np.atleast_2d(ax)
 
-    cmap_name = "viridis"
+    cmap_name = "winter"
     cmap = plt.get_cmap(cmap_name)
     norm = mcolors.Normalize(vmin = data[row].min(), vmax = data[row].max())
 
@@ -119,6 +120,105 @@ def changepoint_distribution(data, x = 'change point', row = 'autapse f', col = 
                 ax[i, j].set_ylabel(f'f = {r} pA')
             if i == len(row_vals) - 1:
                 ax[i, j].set_xlabel('Change point [ms]')
+
+    if add_colorbar:
+        sm = cm.ScalarMappable(cmap = cmap_name, norm = norm)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax = ax)
+        cbar.set_label(colorbar_label)
+
+    return fig, ax
+
+
+def curve_auc(data, y = 'score', x = 'step_height', group_cols = ('autapse f', 'variance', 'N'),
+              extra_cols = None, normalise = True, out_col = 'AUC'):
+    '''
+    Area under the `y` vs `x` curve (trapezoid rule) for every group in `group_cols`,
+    by default one value per neuron (autapse f), noise variance and repeat trial (N).
+
+    Params:
+        y, x:        columns of the curve, e.g. 'score' vs 'step_height'
+        group_cols:  columns defining one curve
+        extra_cols:  extra columns to carry into the output. Numeric columns are
+                     averaged over the curve (e.g. 'divergence' changes with step
+                     height); other columns take their first value (e.g. 'method').
+        normalise:   divide by the x range. For a 0-1 score this is the fraction of
+                     the maximum area; for an unbounded score (LLR) it is the mean
+                     score across x.
+        out_col:     name of the area column
+
+    Returns a dataframe with one row per group: group_cols + extra_cols + [out_col].
+    '''
+    group_cols = list(group_cols)
+    extra_cols = list(extra_cols) if extra_cols is not None else []
+
+    rows = []
+    for keys, sub in data.groupby(group_cols, sort = False):
+        sub = sub.sort_values(x)
+        area = np.trapezoid(y = sub[y], x = sub[x])
+        if normalise:
+            area /= sub[x].max() - sub[x].min()
+
+        row = dict(zip(group_cols, keys))
+        for c in extra_cols:
+            row[c] = sub[c].mean() if pd.api.types.is_numeric_dtype(sub[c]) else sub[c].iloc[0]
+        row[out_col] = area
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def weighted_cp_distance(data, true_cp, cp_col = 'change point',
+                         group_cols = ('autapse f', 'variance', 'step_height'), eps = 1.):
+    '''
+    Inverse-distance-weighted accuracy of the change point estimates for each condition
+    (by default one per autapse f / variance / step height, pooling the repeat trials N).
+    Each estimate gets weight w = 1 / (|CP - true_cp| + eps); eps (ms) avoids dividing by
+    zero for an exact hit.
+
+    Returns a dataframe with one row per group: group_cols +
+        'weighted CP'       sum(w * CP) / sum(w)                  [ms]
+        'weighted CP dist'  |weighted CP - true_cp|               [ms]
+        'weighted |error|'  sum(w * |CP - true_cp|) / sum(w)      [ms], lower = closer
+        'n'                 number of estimates used (NaN change points dropped)
+
+    Note: 'weighted |error|' is about the harmonic mean of |CP - true_cp|, so a few near-exact
+    hits dominate it, and 'weighted CP' is pulled towards true_cp by construction.
+    '''
+    group_cols = list(group_cols)
+
+    rows = []
+    for keys, sub in data.dropna(subset = [cp_col]).groupby(group_cols, sort = False):
+        cp = sub[cp_col].to_numpy(dtype = float)
+        err = np.abs(cp - true_cp)
+        w = 1. / (err + eps)
+        w_cp = np.average(cp, weights = w)
+
+        row = dict(zip(group_cols, keys))
+        row['weighted CP'] = w_cp
+        row['weighted CP dist'] = abs(w_cp - true_cp)
+        row['weighted |error|'] = np.average(err, weights = w)
+        row['n'] = len(cp)
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def auc_plot(auc_df, x = 'autapse f', y = 'AUC', hue = 'variance', fig = None, ax = None,
+             add_colorbar = True, colorbar_label = 'Noise Variance', errorbar = ('ci', 0.9)):
+    '''
+    Plot the area under the curve (from curve_auc) against `x`, one line per `hue`
+    value, averaged over trials with an error band.
+    '''
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(1, 1, figsize = (6, 5))
+
+    cmap_name = 'viridis'
+    norm = mcolors.Normalize(vmin = auc_df[hue].min(), vmax = auc_df[hue].max())
+
+    sns.lineplot(data = auc_df, x = x, y = y, hue = hue, palette = cmap_name, ax = ax, legend = False,
+                 estimator = 'mean', errorbar = errorbar, err_style = 'band', alpha = 0.8)
+    ax.set_title('Area under the curve versus peak autapse current')
 
     if add_colorbar:
         sm = cm.ScalarMappable(cmap = cmap_name, norm = norm)
@@ -221,7 +321,6 @@ def ks_window_cp(isi, t_isi, pre_ref, post_ref, n_isi, stride = 1, return_trace 
 # ---------------------------------------------------------------------------
 # Log-likelihood-ratio (Page) CUSUM on fitted ISI distributions
 # ---------------------------------------------------------------------------
-import pandas as pd
 import scipy.stats as stats
 from sklearn.mixture import GaussianMixture
 

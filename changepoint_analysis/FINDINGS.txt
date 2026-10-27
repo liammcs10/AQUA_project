@@ -10,7 +10,6 @@ The autapse may change output firing patterns in such a way that the FLUSS algor
 the change point from membrane potential data directly. 
 
 INITIAL FINDINGS:
-
   - choice of noise affects things. If noise is varying too fast, it essentially isn't there.
 
   CPA_data_N10.PICKLE
@@ -30,6 +29,8 @@ INITIAL FINDINGS:
     before the step and transitioning to tonic firing after - PURELY COINCIDENCE.
     - Some neurons see a drop in performance despite a larger step height - This is due to long high-frequency 
     transients after the step, the changepoint is then assigned to the end of this transient.
+
+
 
 CUSUM with log-likelihood estimation:
     - each neuron condition is run several times. Pre- and post-CP ISIs are pooled and the best fit kde is estimated from a

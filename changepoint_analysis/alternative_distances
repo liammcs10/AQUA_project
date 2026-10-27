@@ -1,0 +1,10 @@
+## Alternative measures to suggest for later (not implemented)
+- Median absolute error / mean absolute error (= Wasserstein-1 distance from a point mass at true_cp): robust, no eps.
+- Hit rate: fraction of estimates within ±δ ms of true_cp (δ ≈ one mean ISI).
+- Gaussian-kernel weighting `exp(-d²/2σ²)`: bounded weights, no eps sensitivity.
+- Bias + spread split: mean signed error and SD (or RMSE = √(bias² + SD²)).
+- Skill score against chance: compare to the same measure for uniformly random CPs over [t_discard, T]
+  (or the step_height = 0 condition), so 0 = chance and 1 = perfect.
+- Score-weighted error: weight each estimate by its CUSUM `score` instead of distance, to test whether confidence
+  tracks accuracy.
+  
