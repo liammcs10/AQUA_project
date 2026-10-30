@@ -44,6 +44,19 @@ CUSUM with log-likelihood estimation:
        if the distribution is broader maybe an ISI carries less information? The standard RS neuron might have a tighter
        distribution.
 
+DIVERGENCE MEASURES (DECODABILITY): (data = CPA_cusum_N100_llr_pair_div.pickle)
+ - every measure falls as autapse strength goes up starting at about f = 200-250
+ - JS divergence saturates by dH = 10pA for f <= 200. For f = 350, it hasn't saturated yet by dH = 50pA.
+      -> JS is the better metric over Jeffrey's as the latter is uncapped when distributions don't overlap at all.
+*** autapse reduces the amount of information about the stimulus and an optimal decoder would perform worse ***
+      -> due to broader distributions. Spike trains are noisier due to the autapse.
+      -> Using model-free comparisons of distributions shows the same behaviour: the distance between pre- and post- degrades
+      as the autapse is made stronger suggesting the signal is less decodable with the autapse present.
+ - There is a regime where the jeffrey's divergence is high but the CUSUM algorithm is missing information - this is due 
+ to the log-likelihood being clipped at +- 10
+      -> Change point estimate is unaffected with and without the clip. Accuracy is limited by spike timing. 
+ - at large h, score and score per s understate how well the non-autaptic neuron does. 
+ - Fisher information drops 10x from f = 0 to f = 400. 
 
 METRICS:
     - amount of confidence versus variance?

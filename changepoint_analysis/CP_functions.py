@@ -597,27 +597,63 @@ def evidence_rate(t, l, isi_scored, CP):
     return (after - before) * 1000.          # per ms -> per s
 
 
-def jeffreys_divergence(dist_pre, dist_post, pre_ref, post_ref, pairs = False):
+EMPIRICAL_KEYS = ('KS distance', 'energy distance', 'energy distance (log)')
+
+
+def empirical_distances(pre_ref, post_ref):
     '''
-    Symmetric KL (Jeffreys) divergence between the fitted pre and post distributions, estimated
-    on the reference data (unclipped):
-        J = KL(post || pre) + KL(pre || post)
-    with KL(post || pre) = mean over post_ref of [log p_post - log p_pre], and vice versa.
+    Model-free distances between the pooled pre and post ISIs (no fitted distributions):
+        'KS distance'            two-sample KS statistic, 0-1
+        'energy distance'        energy distance [ms]; scales with the ISIs, so it shrinks for faster firing
+        'energy distance (log)'  energy distance of log(ISI), scale-free
+    All values are NaN if either reference is empty.
+    '''
+    if len(pre_ref) == 0 or len(post_ref) == 0:
+        return dict.fromkeys(EMPIRICAL_KEYS, np.nan)
+    return {'KS distance': stats.ks_2samp(pre_ref, post_ref).statistic,
+            'energy distance': stats.energy_distance(pre_ref, post_ref),
+            'energy distance (log)': stats.energy_distance(np.log(pre_ref), np.log(post_ref))}
+
+
+DIVERGENCE_KEYS = ('KL post||pre', 'KL pre||post', 'divergence', 'divergence per s', 'JS divergence')
+
+
+def distribution_divergences(dist_pre, dist_post, pre_ref, post_ref, pairs = False):
+    '''
+    Divergences between the fitted pre and post distributions, estimated on the reference
+    data (unclipped). With KL(post || pre) = mean over post_ref of [log p_post - log p_pre]
+    and vice versa:
+        'KL post||pre', 'KL pre||post'      nats per ISI
+        'divergence'        Jeffreys J = KL(post||pre) + KL(pre||post), nats per ISI
+        'divergence per s'  KL(post||pre) x post rate + KL(pre||post) x pre rate, nats per second
+        'JS divergence'     Jensen-Shannon, 1/2 E_post[log p_post - log m] + 1/2 E_pre[log p_pre - log m]
+                            with m = (p_pre + p_post) / 2; nats per ISI, bounded by ln 2
     For pairs = True the conditional densities p(ISI_n | ISI_{n-1}) are used (references of shape (n, 2)).
-    OUT
-        J:      nats per ISI
-        J_s:    nats per second, KL(post||pre) x post rate + KL(pre||post) x pre rate
+    Works for any two fitted distributions, e.g. the post distributions of two step heights.
+    All values are NaN if either distribution is missing.
     '''
     if dist_pre is None or dist_post is None or len(pre_ref) == 0 or len(post_ref) == 0:
-        return np.nan, np.nan
+        return dict.fromkeys(DIVERGENCE_KEYS, np.nan)
     if pairs:
         lp = lambda dist, ref: dist.logpdf_cond(ref[:, 0], ref[:, 1])
         isi_pre, isi_post = pre_ref[:, 1], post_ref[:, 1]
     else:
         lp = lambda dist, ref: dist.logpdf(ref)
         isi_pre, isi_post = pre_ref, post_ref
-    kl_post_pre = np.mean(lp(dist_post, post_ref) - lp(dist_pre, post_ref))
-    kl_pre_post = np.mean(lp(dist_pre, pre_ref) - lp(dist_post, pre_ref))
-    J = kl_post_pre + kl_pre_post
-    J_s = (kl_post_pre / isi_post.mean() + kl_pre_post / isi_pre.mean()) * 1000.
-    return J, J_s
+
+    lpre_on_pre, lpost_on_pre = lp(dist_pre, pre_ref), lp(dist_post, pre_ref)
+    lpre_on_post, lpost_on_post = lp(dist_pre, post_ref), lp(dist_post, post_ref)
+
+    kl_post_pre = np.mean(lpost_on_post - lpre_on_post)
+    kl_pre_post = np.mean(lpre_on_pre - lpost_on_pre)
+
+    # log of the mixture m = (p_pre + p_post) / 2 on each reference
+    lm_pre = np.logaddexp(lpre_on_pre, lpost_on_pre) - np.log(2)
+    lm_post = np.logaddexp(lpre_on_post, lpost_on_post) - np.log(2)
+    JS = 0.5 * np.mean(lpost_on_post - lm_post) + 0.5 * np.mean(lpre_on_pre - lm_pre)
+
+    return {'KL post||pre': kl_post_pre,
+            'KL pre||post': kl_pre_post,
+            'divergence': kl_post_pre + kl_pre_post,
+            'divergence per s': (kl_post_pre / isi_post.mean() + kl_pre_post / isi_pre.mean()) * 1000.,
+            'JS divergence': JS}
