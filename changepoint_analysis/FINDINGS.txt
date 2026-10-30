@@ -58,6 +58,14 @@ DIVERGENCE MEASURES (DECODABILITY): (data = CPA_cusum_N100_llr_pair_div.pickle)
  - at large h, score and score per s understate how well the non-autaptic neuron does. 
  - Fisher information drops 10x from f = 0 to f = 400. 
 
+CHANGE POINT ESTIMATION:
+  - All distance measures (weighted_cp_distance, L1, and L2 norms) show that the 
+  non-autaptic neuron has the most accurate CP estimate and it seems to degrade with increasing f. 
+
+
+
+
+
 METRICS:
     - amount of confidence versus variance?
     - how early is the changepoint time well estimated?

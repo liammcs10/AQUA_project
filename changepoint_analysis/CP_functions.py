@@ -204,6 +204,132 @@ def weighted_cp_distance(data, true_cp, cp_col = 'change point',
     return pd.DataFrame(rows)
 
 
+def cp_error_norms(data, true_cp, cp_col = 'change point',
+                   group_cols = ('autapse f', 'variance', 'step_height')):
+    '''
+    L1 and L2 norms of the change point errors e = |CP - true_cp| for each condition
+    (by default one per autapse f / variance / step height, pooling the repeat trials N),
+    normalised by the number of estimates n so conditions with dropped NaNs stay comparable.
+
+    Returns a dataframe with one row per group: group_cols +
+        'L1 |error|'  sum(e) / n            mean absolute error      [ms]
+        'L2 |error|'  sqrt(sum(e**2) / n)   root-mean-square error   [ms]
+        'n'           number of estimates used (NaN change points dropped)
+    '''
+    group_cols = list(group_cols)
+
+    rows = []
+    for keys, sub in data.dropna(subset = [cp_col]).groupby(group_cols, sort = False):
+        err = np.abs(sub[cp_col].to_numpy(dtype = float) - true_cp)
+
+        row = dict(zip(group_cols, keys))
+        row['L1 |error|'] = np.mean(err)
+        row['L2 |error|'] = np.sqrt(np.mean(err**2))
+        row['n'] = len(err)
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+def mean_isi(spikes, t_discard = 200.):
+    '''
+    Mean ISI of each condition, pooling the ISIs of all repeat trials.
+        spikes:     dict {(rep, variance, step_height, autapse f): spike times [ms]}, as saved in
+                    the '_spikes.pickle' from simulate_w_cusum
+        t_discard:  spikes before this time [ms] are ignored (same default as cusum_analysis)
+
+    Returns a dataframe with columns variance, step_height, autapse f, 'mean ISI' [ms].
+    '''
+    pooled = {}
+    for (rep, v, h, f), s in spikes.items():
+        pooled.setdefault((v, h, f), []).append(spike_isis(s, t_discard)[0])
+
+    rows = [{'variance': v, 'step_height': h, 'autapse f': f, 'mean ISI': np.mean(np.concatenate(isis))}
+            for (v, h, f), isis in pooled.items()]
+    return pd.DataFrame(rows)
+
+
+def _abs_errors(sub, true_cp, cp_col):
+    ''' |CP - true_cp| with NaN change points (no detection) as inf, i.e. never within tolerance '''
+    err = np.abs(sub[cp_col].to_numpy(dtype = float) - true_cp)
+    return np.where(np.isnan(err), np.inf, err)
+
+
+def hit_rate_curves(data, true_cp, tols, isi_df = None, cp_col = 'change point',
+                    group_cols = ('autapse f', 'variance', 'step_height')):
+    '''
+    Fraction of trials whose change point estimate is within a tolerance of true_cp,
+    P(|CP - true_cp| <= tol), for each condition and each tolerance in `tols`.
+        tols:    tolerances in ms, or (with isi_df) in multiples of the condition's mean ISI
+        isi_df:  output of mean_isi; scales the tolerance to each condition's firing rate
+
+    Returns a long dataframe: group_cols + 'tol' (as given) + 'tol [ms]' + 'hit rate'.
+    The area under it is curve_auc(curves, y = 'hit rate', x = 'tol', group_cols = group_cols).
+    '''
+    group_cols = list(group_cols)
+    tols = np.asarray(tols, dtype = float)
+    if isi_df is not None:
+        data = data.merge(isi_df, on = ['variance', 'step_height', 'autapse f'], how = 'left')
+
+    frames = []
+    for keys, sub in data.groupby(group_cols, sort = False):
+        err = _abs_errors(sub, true_cp, cp_col)
+        tol_ms = tols * sub['mean ISI'].iloc[0] if isi_df is not None else tols
+
+        df = pd.DataFrame({'tol': tols, 'tol [ms]': tol_ms,
+                           'hit rate': (err[None, :] <= tol_ms[:, None]).mean(axis = 1)})
+        for c, k in zip(group_cols, keys):
+            df[c] = k
+        frames.append(df)
+
+    return pd.concat(frames, ignore_index = True)[group_cols + ['tol', 'tol [ms]', 'hit rate']]
+
+
+def tolerance_roc(data, true_cp, null_step = 0, cp_col = 'change point',
+                  group_cols = ('autapse f', 'variance')):
+    '''
+    ROC of change point localisation, sweeping the tolerance tol:
+        TPR(tol) = P(|CP - true_cp| <= tol | step h)
+        FPR(tol) = P(|CP - true_cp| <= tol | step null_step), the same neuron and noise with no
+                   change, i.e. how often an estimate lands that close to true_cp by chance
+    AUC = P(err_h < err_null) + P(err_h == err_null) / 2 (Mann-Whitney), exact. The curve and AUC
+    do not depend on the tolerance units, so a constant and an ISI-scaled tolerance give the same ROC.
+
+    Returns (roc_df, auc_df):
+        roc_df:  group_cols + step_height + 'tol [ms]', 'TPR', 'FPR' (one row per threshold)
+        auc_df:  group_cols + step_height + 'AUC'
+    '''
+    group_cols = list(group_cols)
+
+    roc_frames, auc_rows = [], []
+    for keys, sub in data.groupby(group_cols, sort = False):
+        null = sub[sub['step_height'] == null_step]
+        if null.empty:
+            continue
+        err_0 = _abs_errors(null, true_cp, cp_col)
+
+        for h, sub_h in sub[sub['step_height'] != null_step].groupby('step_height'):
+            err_h = _abs_errors(sub_h, true_cp, cp_col)
+            tols = np.unique(np.concatenate(([0., np.inf], err_0, err_h)))
+
+            df = pd.DataFrame({'tol [ms]': tols,
+                               'TPR': (err_h[None, :] <= tols[:, None]).mean(axis = 1),
+                               'FPR': (err_0[None, :] <= tols[:, None]).mean(axis = 1)})
+            row = dict(zip(group_cols, keys), step_height = h)
+            for c, k in row.items():
+                df[c] = k
+            roc_frames.append(df)
+
+            diff = err_h[:, None] - err_0[None, :]
+            with np.errstate(invalid = 'ignore'):   # inf - inf: both missed, count as a tie
+                row['AUC'] = np.mean(diff < 0) + 0.5 * np.mean((diff == 0) | np.isnan(diff))
+            auc_rows.append(row)
+
+    cols = group_cols + ['step_height']
+    roc_df = pd.concat(roc_frames, ignore_index = True)[cols + ['tol [ms]', 'TPR', 'FPR']]
+    return roc_df, pd.DataFrame(auc_rows)
+
+
 def auc_plot(auc_df, x = 'autapse f', y = 'AUC', hue = 'variance', fig = None, ax = None,
              add_colorbar = True, colorbar_label = 'Noise Variance', errorbar = ('ci', 0.9)):
     '''

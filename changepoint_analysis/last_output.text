@@ -1,0 +1,26 @@
+I added two new notebook cells: hit rate vs tolerance with its AUC, and an ROC with its AUC for each autapse condition. They run on the N100 data and draw all five figures without errors.
+
+Your exact definition gives an uninformative ROC. If TP means within the tolerance and FP means outside it, in the same trials, then FPR = 1 − TPR at every tolerance. Every curve is then the diagonal and the AUC is always 0.5. So, as we agreed, the notebook has both of these:
+
+Hit rate vs tolerance. This is P(|error| ≤ tol), plotted for each condition, with the normalised area under it as the AUC.
+Set TOL_MODE = 'isi' or 'ms' at the top of the cell.
+In 'isi' mode the tolerance is a multiple (0–20) of each condition's mean ISI. The mean ISI comes from CPA_cusum_N100_spikes.pickle, pooled over trials, ignoring the first 200 ms.
+In 'ms' mode the tolerance runs from 0 to 1000 ms.
+ROC against no-change trials. The tolerance is swept as you suggested, but the false positives come from the step-0 trials of the same neuron and noise level:
+TPR(tol) = P(|error| ≤ tol | step h)
+FPR(tol) = P(|error| ≤ tol | step 0), i.e. how often an estimate lands that close to 5000 ms with no change at all.
+The AUC is the probability that the error with a step is smaller than the error without one. I computed it exactly, and it matches the area under the plotted curve.
+The ROC curve and its AUC don't depend on the tolerance units. Every point on the curve uses the same tolerance for both sets of trials, so measuring it in ms or in ISIs traces the same curve. The ISI option therefore changes only the hit-rate plots and the dots on the ROC, which mark tol = 1 mean ISI (or tol_ref_ms in 'ms' mode).
+
+Figures:
+
+One panel per autapse f for hit rate and for the ROC, with curves coloured by step height.
+AUC vs step height for each, coloured by f, with one column per variance.
+What the results show: the ROC AUC climbs from about 0.76 at a 1 pA step to above 0.98 from 10 pA up. The f = 400 neuron is noticeably worse at small steps.
+
+Things to know:
+
+Panel variance: the per-f panels show variance 25 (v_plot). At variance 0 every trial is identical, so those curves are just single steps.
+Missing estimates: a missing change point would count as a miss. There are none in this dataset.
+Deleted cell: the original weighted-error cell is gone from the notebook, probably removed in the editor. That broke the L1/L2 cell, so it now computes the weighted error itself.
+The new functions are mean_isi, hit_rate_curves and tolerance_roc, all in CP_functions.py. I checked everything in the aqua env with your notebook's import cell skipped, because that env can't import brian2. Restart your kernel so the notebook picks up the new functions
