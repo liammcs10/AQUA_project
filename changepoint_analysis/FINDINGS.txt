@@ -31,7 +31,6 @@ INITIAL FINDINGS:
     transients after the step, the changepoint is then assigned to the end of this transient.
 
 
-
 CUSUM with log-likelihood estimation:
     - each neuron condition is run several times. Pre- and post-CP ISIs are pooled and the best fit kde is estimated from a
     range of options including log-gaussian mixture models and ISI pair dependence (bursting).
@@ -44,7 +43,7 @@ CUSUM with log-likelihood estimation:
        if the distribution is broader maybe an ISI carries less information? The standard RS neuron might have a tighter
        distribution.
 
-DIVERGENCE MEASURES (DECODABILITY): (data = CPA_cusum_N100_llr_pair_div.pickle)
+DIVERGENCE MEASURES (DECODABILITY): (data = CPA_cusum_mean_N100_llr_pair_div.pickle)
  - every measure falls as autapse strength goes up starting at about f = 200-250
  - JS divergence saturates by dH = 10pA for f <= 200. For f = 350, it hasn't saturated yet by dH = 50pA.
       -> JS is the better metric over Jeffrey's as the latter is uncapped when distributions don't overlap at all.
@@ -59,9 +58,11 @@ DIVERGENCE MEASURES (DECODABILITY): (data = CPA_cusum_N100_llr_pair_div.pickle)
  - Fisher information drops 10x from f = 0 to f = 400. 
 
 CHANGE POINT ESTIMATION:
-  - All distance measures (weighted_cp_distance, L1, and L2 norms) show that the 
+  - All distance measures CP time distributions (weighted_cp_distance, L1, and L2 norms) show that the 
   non-autaptic neuron has the most accurate CP estimate and it seems to degrade with increasing f. 
 
+
+VARIANCE CUSUM:
 
 
 

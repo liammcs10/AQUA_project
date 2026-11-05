@@ -231,20 +231,21 @@ def cp_error_norms(data, true_cp, cp_col = 'change point',
     return pd.DataFrame(rows)
 
 
-def mean_isi(spikes, t_discard = 200.):
+def mean_isi(spikes, t_discard = 200., step_col = 'step_height'):
     '''
     Mean ISI of each condition, pooling the ISIs of all repeat trials.
         spikes:     dict {(rep, variance, step_height, autapse f): spike times [ms]}, as saved in
                     the '_spikes.pickle' from simulate_w_cusum
         t_discard:  spikes before this time [ms] are ignored (same default as cusum_analysis)
+        step_col:   column name for the second key ('variance_step' for a variance change point)
 
-    Returns a dataframe with columns variance, step_height, autapse f, 'mean ISI' [ms].
+    Returns a dataframe with columns variance, step_col, autapse f, 'mean ISI' [ms].
     '''
     pooled = {}
     for (rep, v, h, f), s in spikes.items():
         pooled.setdefault((v, h, f), []).append(spike_isis(s, t_discard)[0])
 
-    rows = [{'variance': v, 'step_height': h, 'autapse f': f, 'mean ISI': np.mean(np.concatenate(isis))}
+    rows = [{'variance': v, step_col: h, 'autapse f': f, 'mean ISI': np.mean(np.concatenate(isis))}
             for (v, h, f), isis in pooled.items()]
     return pd.DataFrame(rows)
 
@@ -269,7 +270,8 @@ def hit_rate_curves(data, true_cp, tols, isi_df = None, cp_col = 'change point',
     group_cols = list(group_cols)
     tols = np.asarray(tols, dtype = float)
     if isi_df is not None:
-        data = data.merge(isi_df, on = ['variance', 'step_height', 'autapse f'], how = 'left')
+        keys = [c for c in isi_df.columns if c != 'mean ISI']
+        data = data.merge(isi_df, on = keys, how = 'left')
 
     frames = []
     for keys, sub in data.groupby(group_cols, sort = False):
@@ -286,7 +288,7 @@ def hit_rate_curves(data, true_cp, tols, isi_df = None, cp_col = 'change point',
 
 
 def tolerance_roc(data, true_cp, null_step = 0, cp_col = 'change point',
-                  group_cols = ('autapse f', 'variance')):
+                  group_cols = ('autapse f', 'variance'), step_col = 'step_height'):
     '''
     ROC of change point localisation, sweeping the tolerance tol:
         TPR(tol) = P(|CP - true_cp| <= tol | step h)
@@ -294,28 +296,29 @@ def tolerance_roc(data, true_cp, null_step = 0, cp_col = 'change point',
                    change, i.e. how often an estimate lands that close to true_cp by chance
     AUC = P(err_h < err_null) + P(err_h == err_null) / 2 (Mann-Whitney), exact. The curve and AUC
     do not depend on the tolerance units, so a constant and an ISI-scaled tolerance give the same ROC.
+    step_col is the change size column ('variance_step' for a variance change point).
 
     Returns (roc_df, auc_df):
-        roc_df:  group_cols + step_height + 'tol [ms]', 'TPR', 'FPR' (one row per threshold)
-        auc_df:  group_cols + step_height + 'AUC'
+        roc_df:  group_cols + step_col + 'tol [ms]', 'TPR', 'FPR' (one row per threshold)
+        auc_df:  group_cols + step_col + 'AUC'
     '''
     group_cols = list(group_cols)
 
     roc_frames, auc_rows = [], []
     for keys, sub in data.groupby(group_cols, sort = False):
-        null = sub[sub['step_height'] == null_step]
+        null = sub[sub[step_col] == null_step]
         if null.empty:
             continue
         err_0 = _abs_errors(null, true_cp, cp_col)
 
-        for h, sub_h in sub[sub['step_height'] != null_step].groupby('step_height'):
+        for h, sub_h in sub[sub[step_col] != null_step].groupby(step_col):
             err_h = _abs_errors(sub_h, true_cp, cp_col)
             tols = np.unique(np.concatenate(([0., np.inf], err_0, err_h)))
 
             df = pd.DataFrame({'tol [ms]': tols,
                                'TPR': (err_h[None, :] <= tols[:, None]).mean(axis = 1),
                                'FPR': (err_0[None, :] <= tols[:, None]).mean(axis = 1)})
-            row = dict(zip(group_cols, keys), step_height = h)
+            row = {**dict(zip(group_cols, keys)), step_col: h}
             for c, k in row.items():
                 df[c] = k
             roc_frames.append(df)
@@ -325,7 +328,7 @@ def tolerance_roc(data, true_cp, null_step = 0, cp_col = 'change point',
                 row['AUC'] = np.mean(diff < 0) + 0.5 * np.mean((diff == 0) | np.isnan(diff))
             auc_rows.append(row)
 
-    cols = group_cols + ['step_height']
+    cols = group_cols + [step_col]
     roc_df = pd.concat(roc_frames, ignore_index = True)[cols + ['tol [ms]', 'TPR', 'FPR']]
     return roc_df, pd.DataFrame(auc_rows)
 
@@ -783,3 +786,100 @@ def distribution_divergences(dist_pre, dist_post, pre_ref, post_ref, pairs = Fal
             'divergence': kl_post_pre + kl_pre_post,
             'divergence per s': (kl_post_pre / isi_post.mean() + kl_pre_post / isi_pre.mean()) * 1000.,
             'JS divergence': JS}
+
+
+# ---------------------------------------------------------------------------
+# Online CUSUM detection: latency vs false alarms, and the divergence-based bounds
+# ---------------------------------------------------------------------------
+
+def llr_trace(isi, t_isi, dist_pre, dist_post, pairs = False, clip = None):
+    '''
+    Per-ISI log-likelihood ratio, as in llr_cp (pairs = False) or llr_pair_cp (pairs = True),
+    without the changepoint search.
+    OUT
+        t:  end time of each scored ISI [ms] (the first ISI is not scored for pairs)
+        l:  log p_post - log p_pre, clipped to +-clip (None = unclipped)
+    '''
+    if pairs:
+        prev, curr, t = isi_pairs(isi, t_isi)
+        l = dist_post.logpdf_cond(prev, curr) - dist_pre.logpdf_cond(prev, curr)
+    else:
+        t, l = t_isi, dist_post.logpdf(isi) - dist_pre.logpdf(isi)
+    if clip is not None:
+        l = np.clip(l, -clip, clip)
+    return t, l
+
+
+def online_cusum(l, b):
+    '''
+    Online CUSUM W_n = max(0, W_{n-1} + l_n), alarm when W_n > b, run for every threshold in b at once.
+    W restarts at 0 after each alarm (so the alarm count measures the false-alarm rate on pre-change data);
+    the first alarm is the same with or without restarting.
+    IN
+        l:  LLR of each ISI, in arrival order
+        b:  thresholds [nats]
+    OUT
+        first:      index into l of the first alarm for each b (-1 = no alarm)
+        n_alarms:   number of alarms for each b
+    '''
+    b = np.atleast_1d(np.asarray(b, dtype = float))
+    W = np.zeros_like(b)
+    first = np.full(len(b), -1)
+    n_alarms = np.zeros(len(b), dtype = int)
+    for n, ln in enumerate(l):
+        W = np.maximum(0., W + ln)
+        hit = W > b
+        first[hit & (first < 0)] = n
+        n_alarms += hit
+        W[hit] = 0.
+    return first, n_alarms
+
+
+def cusum_theory(kl_post_pre, kl_pre_post, b):
+    '''
+    Siegmund's approximations for the CUSUM with threshold b (iid observations, overshoot ignored):
+        ADD  ~ (b + e^-b - 1) / KL(post || pre)     mean delay from W = 0, in ISIs
+        ARL0 ~ (e^b - b - 1) / KL(pre || post)      mean run length to a false alarm, in ISIs
+    '''
+    b = np.asarray(b, dtype = float)
+    return (b + np.exp(-b) - 1) / kl_post_pre, (np.exp(b) - b - 1) / kl_pre_post
+
+
+def lai_bound(kl_post_pre, arl0_isi):
+    '''
+    Lai (1998) asymptotic lower bound on the delay of any online detector with mean run length
+    arl0_isi to a false alarm: ln(ARL0) / KL(post || pre), in ISIs.
+    '''
+    return np.log(np.maximum(arl0_isi, 1.)) / kl_post_pre
+
+
+def residual_isi(isi):
+    '''
+    Mean wait from a random time (the step) to the next spike, E[X^2] / (2 E[X]) for a renewal
+    process (inspection paradox); same units as isi.
+    '''
+    isi = np.asarray(isi, dtype = float)
+    return np.mean(isi**2) / (2 * np.mean(isi))
+
+
+def optimal_delay(arl0_isi, kl_post_pre, kl_pre_post, b_max = 50.):
+    '''
+    Mean CUSUM delay [ISIs] at a given mean run length to a false alarm [ISIs], from cusum_theory with
+    b eliminated: the delay / false-alarm trade-off of the optimal (Lorden) detector for these divergences.
+    Matching on the false-alarm rate, rather than on b, cancels most of the overshoot error of the
+    Siegmund approximations. Broadcasts over arl0_isi and the KLs.
+    '''
+    # ARL0 x KL(pre||post) = e^b - b - 1 does not depend on the KLs: invert it for b, then ADD = (b + e^-b - 1) / KL
+    b = np.linspace(0., b_max, 5001)[1:]
+    b_at = np.interp(np.log(np.asarray(arl0_isi) * kl_pre_post), np.log(np.exp(b) - b - 1), b,
+                     left = np.nan, right = np.nan)
+    return (b_at + np.exp(-b_at) - 1) / kl_post_pre
+
+
+def delay_to_ms(add_isi, mean_isi_post, residual):
+    '''
+    Converts a CUSUM delay in observations to time after the step [ms]. The first observation is the
+    ISI straddling the step, which ends on average `residual` after it (residual_isi); each further
+    observation adds a mean post-step ISI. Never below the residual.
+    '''
+    return residual + np.maximum(np.asarray(add_isi) - 1, 0) * mean_isi_post

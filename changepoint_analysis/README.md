@@ -4,6 +4,13 @@ Does an autapse help a neuron signal a sudden change in its input?
 
 Single regular-spiking (RS, Izhikevich-type) AQUA neurons, with and without an autapse, receive a noisy step current. A change point detector is then run on each neuron's output to estimate when the step happened, and how confidently. Results are compared across autapse strength, step height and noise level.
 
+There are two kinds of change point (`CHANGE` in `main()`, `change` in `simulate_runs` / `simulate_w_cusum` / `cusum_analysis`):
+
+- **`'mean'`**: the mean of the input current steps from I_0 to I_0 + h; the noise variance stays fixed.
+- **`'variance'`**: the mean stays at I_0 (step height 0) and the noise variance jumps from σ² to σ² + Δσ². The CUSUM pipeline only.
+
+Notebooks and data files are tagged `_mean` / `_variance` accordingly.
+
 There are two pipelines:
 
 1. **FLUSS** (offline, model-free) on the membrane potential V(t).
@@ -14,7 +21,7 @@ There are two pipelines:
 
 ## Main script: `CPA_with_AQUA.py`
 
-Runs a full parameter sweep with one of the two pipelines and saves one results table. `main()` currently runs the CUSUM pipeline; the FLUSS call is commented out above it.
+Runs a full parameter sweep with one of the two pipelines and saves one results table. `main()` currently runs the CUSUM pipeline with `CHANGE = 'variance'` and `method = 'llr_pair'`; the FLUSS call is commented out above it.
 
 ### 1. Parameters (`main()`)
 
@@ -29,13 +36,15 @@ Shared by both pipelines:
 | Noise variance `var` | `np.linspace(0, 50, 5)` |
 | Repeats `N_repeats` | 100 |
 
+For `CHANGE = 'variance'`, `d_H` is the variance jump Δσ² = `[0, 5, 10, 25, 50, 100, 150, 200]` pA² and `var` is the baseline (pre-change) variance `[0, 12.5, 25, 50]`.
+
 Pipeline-specific:
 
 | Parameter | FLUSS | CUSUM |
 |---|---|---|
 | Window | `window = 300` time steps (30 ms) | `n_isi = 5` ISIs (KS only) |
 | Method | - | `method = 'ks'`, `'llr'` or `'llr_pair'` |
-| Output file | `CPA_data_N100.pickle` | `CPA_cusum_N{N_repeats}_{method}.pickle` |
+| Output file | `CPA_data_N100.pickle` | `CPA_cusum_{CHANGE}_N{N_repeats}_{method}.pickle` |
 
 Change these in `main()` to run a different sweep.
 
@@ -47,7 +56,8 @@ Change these in `main()` to run a different sweep.
 | True change point | 1500 ms | 5000 ms (T / 2) |
 | Time step dt | 0.1 ms | 0.1 ms |
 
-- The current starts at I_0 = 60 pA and steps to I_0 + h at the change point (built with `step_current`).
+- Mean change: the current starts at I_0 = 60 pA and steps to I_0 + h at the change point (built with `step_current`).
+- Variance change: the current stays at I_0 and the noise samples drawn after the change point are scaled by √(σ² + Δσ²) instead of √σ².
 - Noise is piecewise-constant Gaussian: one sample is drawn every 20 ms (50 Hz) and held, with the chosen variance.
 - Within each (variance, step height) block, every autapse strength `f` gets the **same** noisy current, so neurons are compared on identical input.
 
@@ -104,6 +114,7 @@ CUSUM (`simulate_w_cusum`) has the same first four columns, then:
 
 | Column | Meaning |
 |---|---|
+| `variance_step` | jump in the noise variance Δσ² (pA²); 0 for a mean change. For a variance change `step_height` is 0 and `variance` is the pre-change variance |
 | `ISI window` | `n_isi` for `'ks'`, NaN for the LLR methods |
 | `score` | mean(d or l after CP) − mean(before CP) |
 | `change point` | estimated change time (ms); true value is 5000 |
@@ -116,10 +127,12 @@ CUSUM (`simulate_w_cusum`) has the same first four columns, then:
 | `JS divergence` | Jensen–Shannon divergence of pre/post, nats per ISI, at most ln 2 (LLR only) |
 | `fisher local`, `fisher local per s` | Fisher information about the input current, `divergence` / h², nats/pA² per ISI and per s; NaN at h = 0 (LLR only) |
 | `fisher`, `fisher per s` | Fisher information at I_0 + h from neighbouring step heights' post distributions, nats/pA² per ISI and per s (LLR only) |
+
+For a variance change both Fisher measures are about the noise variance (divided by Δσ², so nats/pA⁴).
 | `KS distance` | two-sample KS statistic between the pooled pre and post ISIs, 0–1 (all methods, model-free) |
 | `energy distance`, `energy distance (log)` | energy distance between the pooled pre and post ISIs, in ms and on log(ISI) (all methods, model-free) |
 
-The CUSUM run also writes `<outfile>_spikes.pickle`: a dict with `spikes[(repeat, v, h, f)]` (spike times) plus `f_values`, `d_H`, `var`, `N_repeats`, `changepoint`, `dt` and `T`.
+The CUSUM run also writes `CPA_cusum_{CHANGE}_N{N_repeats}_spikes.pickle`: a dict with `spikes[(repeat, v, h, f)]` (spike times; h is Δσ² for a variance change) plus `f_values`, `d_H`, `var`, `N_repeats`, `changepoint`, `dt`, `T` and `change` (missing in older files, which are all `'mean'`).
 
 ### Running
 
@@ -161,8 +174,9 @@ All detectors take `return_trace = True` to also return the per-window/per-ISI v
 | File | Description |
 |---|---|
 | `CUSUM_method_demo.ipynb` | Worked example of the KS, LLR and ISI-pair LLR methods on one condition: references, fitted distributions, return maps and detection traces. Start here for the CUSUM pipeline. |
-| `AQUA_CPA_plots_CUSUM.ipynb` | Loads a CUSUM results pickle and plots psychometric curves, AUC of score / score per s / divergence vs `f` and variance, change point errors, weighted accuracy and change point histograms. |
-| `CPA_divergences_CUSUM.ipynb` | Plots the divergence measures (KL, Jeffreys, JS, local and across-step Fisher information) against step height, per noise level and per neuron. Also: their mean vs `f`, JS / Fisher heatmaps, and checks (local vs across-step Fisher, evidence collected vs Jeffreys per s). Ends with the model-free KS / energy distances and how they compare with the fitted measures. Uses one row per condition; drops var = 0 by default. |
+| `AQUA_CPA_plots_CUSUM_mean.ipynb` | Loads a CUSUM results pickle and plots psychometric curves, AUC of score / score per s / divergence vs `f` and variance, change point errors, weighted accuracy and change point histograms. |
+| `CPA_CUSUM_variance.ipynb` | Analysis of the variance change point (`CPA_cusum_variance_N100_llr_pair.pickle`): example ISI / ISI-pair distributions, score and AUC, change point errors, hit rate and tolerance ROC, histograms, and the divergence measures, all against the variance jump Δσ². Combines the three `_mean` notebooks. |
+| `CPA_divergences_CUSUM_mean.ipynb` | Plots the divergence measures (KL, Jeffreys, JS, local and across-step Fisher information) against step height, per noise level and per neuron. Also: their mean vs `f`, JS / Fisher heatmaps, and checks (local vs across-step Fisher, evidence collected vs Jeffreys per s). Ends with the model-free KS / energy distances and how they compare with the fitted measures. Uses one row per condition; drops var = 0 by default. |
 | `AQUA_CPA_plots_FLUSS.ipynb` | The same for FLUSS results (CAC psychometric curves, AUC vs `f`, change point error distributions). Saves figures to `plots/`. |
 | `CPA_TRACES_with_AQUA.ipynb` | Re-simulates selected (f, variance, step height) conditions and plots their traces with FLUSS scores, to explain unusual results. |
 | `changepoint_neurons.ipynb` | Single-neuron exploration: autaptic vs non-autaptic responses to a step, trying ESST, FLUSS and RuLSIF on the voltage trace. |
@@ -181,13 +195,15 @@ All detectors take `return_trace = True` to also return the per-window/per-ISI v
 |---|---|
 | `CPA_data_N100.pickle` | FLUSS results: 100 repeats, noise resampled at 50 Hz. |
 | `CPA_data_N10.pickle` | Earlier FLUSS run: 10 repeats, noise resampled at 10 kHz. |
-| `CPA_cusum_N100_spikes.pickle` | Raw spike times for the 100-repeat CUSUM sweep (T = 10 s, CP at 5 s). |
-| `CPA_cusum_N100_ks.pickle` | Windowed KS CUSUM (`n_isi` = 5). |
-| `CPA_cusum_N100_llr.pickle` | LLR CUSUM, families gamma / lognormal / inverse Gaussian only. |
-| `CPA_cusum_N100_llr_gmm.pickle` | LLR CUSUM, plus 2-component log-ISI mixture. |
-| `CPA_cusum_N100_llr_gmm3.pickle` | LLR CUSUM, plus 2- and 3-component mixtures (current default), with score per s and divergence columns. |
-| `CPA_cusum_N100_llr_pair.pickle` | ISI-pair LLR CUSUM, with score per s and divergence columns. |
-| `CPA_cusum_N100_llr_pair_div.pickle` | The same re-analysed from the spike file, plus the KL, JS and Fisher information columns. |
+| `CPA_cusum_variance_N100_spikes.pickle` | Raw spike times for the 100-repeat variance change point sweep (T = 10 s, CP at 5 s). |
+| `CPA_cusum_variance_N100_llr_pair.pickle` | ISI-pair LLR CUSUM on the variance change point sweep. |
+| `CPA_cusum_mean_N100_spikes.pickle` | Raw spike times for the 100-repeat CUSUM sweep (T = 10 s, CP at 5 s). |
+| `CPA_cusum_mean_N100_ks.pickle` | Windowed KS CUSUM (`n_isi` = 5). |
+| `CPA_cusum_mean_N100_llr.pickle` | LLR CUSUM, families gamma / lognormal / inverse Gaussian only. |
+| `CPA_cusum_mean_N100_llr_gmm.pickle` | LLR CUSUM, plus 2-component log-ISI mixture. |
+| `CPA_cusum_mean_N100_llr_gmm3.pickle` | LLR CUSUM, plus 2- and 3-component mixtures (current default), with score per s and divergence columns. |
+| `CPA_cusum_mean_N100_llr_pair.pickle` | ISI-pair LLR CUSUM, with score per s and divergence columns. |
+| `CPA_cusum_mean_N100_llr_pair_div.pickle` | The same re-analysed from the spike file, plus the KL, JS and Fisher information columns. |
 | `CPA_test_data.pickle`, `CPA_test_.pickle`, `results_test.pickle` | Small test runs. |
 | `plots/` | FLUSS figures for the N10 and N100 data sets (CAC, change point and AUC plots). |
 | `nohup.out` | Log of the last background run. |

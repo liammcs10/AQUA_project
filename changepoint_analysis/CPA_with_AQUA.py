@@ -2,6 +2,7 @@
 Here we will try to implement a simple change point analysis protocol using the AQUA model.
 
 Injected current will contain 1 change point at a fixed time where the mean of the injected current will change. There will be a super imposed noise.
+Alternatively (change = 'variance') the mean stays fixed and the variance of the noise jumps at the change point.
 
 The question: Based on the spiking activity alone, is it possible to estimate the change point? How significant does the change point have to be? 
 
@@ -87,14 +88,24 @@ def main():
     f_values = np.array([0, 100, 150, 200, 220, 240, 260, 280, 300, 350, 400])
     print(f_values)
 
-    # height of the change point
-    #d_H = np.linspace(0, 50, 10)
-    #d_H = np.linspace(0, 5, 10)
-    d_H = np.array([0, 1, 2, 3, 4, 5, 10, 12, 15, 18, 20, 25, 30, 40, 50])
+    # what changes at the CP: 'mean' (step in the input current) or 'variance' (jump in the noise variance)
+    CHANGE = 'variance'
 
-    # noise variance 
-    var = np.linspace(0, 50, 5)
-    #var = np.array([0])
+    if CHANGE == 'mean':
+        # height of the change point
+        #d_H = np.linspace(0, 50, 10)
+        #d_H = np.linspace(0, 5, 10)
+        d_H = np.array([0, 1, 2, 3, 4, 5, 10, 12, 15, 18, 20, 25, 30, 40, 50])
+
+        # noise variance
+        var = np.linspace(0, 50, 5)
+        #var = np.array([0])
+    else:
+        # jump in the noise variance at the CP [pA^2]; the mean stays at I_0
+        d_H = np.array([0, 5, 10, 25, 50, 100, 150, 200])
+
+        # noise variance before the CP
+        var = np.array([0, 12.5, 25, 50])
 
     # FLUSS window size (in time steps)
     window = 300
@@ -107,34 +118,41 @@ def main():
 
     # ISI / KS changepoint (spike times only)
     n_isi = 5       # ISIs per window (RS neuron fires ~4 Hz at I_0 = 60, so only ~6-12 ISIs before the CP)
-    method = 'llr'
-    spike_file = None   # None = simulate; or e.g. 'CPA_cusum_N100_spikes.pickle' to re-analyse saved spikes
-    outfile = f'CPA_cusum_N{N_repeats}_{method}.pickle'
+    method = 'llr_pair'
+    spike_file = None   # None = simulate; or e.g. 'CPA_cusum_mean_N100_spikes.pickle' to re-analyse saved spikes
+    outfile = f'CPA_cusum_{CHANGE}_N{N_repeats}_{method}.pickle'
+    spike_out = f'CPA_cusum_{CHANGE}_N{N_repeats}_spikes.pickle'
     simulate_w_cusum(RS, f_values, d_H, var, n_isi, N_repeats, outfile, repeats_per_batch = 5, method = method,
-                     spike_file = spike_file)
+                     spike_file = spike_file, change = CHANGE, spike_out = spike_out)
 
 
 
 
 def simulate_runs(model, f_values, d_H, var, N_repeats, T, changepoint, dt = 0.1,
                   I_0 = 60, noise_rate = 50, e = 0.2, tau = 2.0,
-                  repeats_per_batch = 1, save_all = True):
+                  repeats_per_batch = 1, save_all = True, change = 'mean'):
     """
     Simulates every (repeat, var, H, f) combination with a noisy step current and yields
     the results one batch of repeats at a time (so full V traces never all sit in memory).
 
-    - The current steps from I_0 to I_0 + h at `changepoint` [ms].
-    - Noise is Gaussian with variance v, resampled at noise_rate [Hz] and held in between.
+    change = 'mean':     the current steps from I_0 to I_0 + h at `changepoint` [ms];
+                         noise is Gaussian with variance v throughout.
+    change = 'variance': the mean stays at I_0 and the noise variance jumps from v to v + h
+                         at `changepoint` (d_H is then the variance jump [pA^2]).
+    - Noise is resampled at noise_rate [Hz] and held in between.
     - Within each (repeat, var, H) block every autapse strength f gets the same noisy current.
 
     Params:
         repeats_per_batch:  repeats stacked into one batchAQUA call (limits I_inj memory)
         save_all:           passed to batchAQUA.update_batch (False = spike times only)
+        change:             'mean' or 'variance'
     Yields:
         reps:   list of repeat indices in this batch
         out:    (X, t, spikes) if save_all, else the NaN-padded spike time array
                 Rows are ordered rep -> var -> H -> f (within a repeat, see find_idx).
     """
+    if change not in ('mean', 'variance'):
+        raise ValueError(f"change must be 'mean' or 'variance', not {change!r}")
     N_iter = int(T/dt)
 
     # create parameter dictionary
@@ -151,6 +169,7 @@ def simulate_runs(model, f_values, d_H, var, N_repeats, T, changepoint, dt = 0.1
 
     noise_steps = int(1/noise_rate * (1000/dt))
     num_unique = N_iter // noise_steps      # number of random numbers to sample
+    post = np.arange(num_unique) * noise_steps * dt >= changepoint     # noise samples held after the CP
 
     # same neuron parameters for every (var, H) block and every repeat
     params_df = pd.DataFrame(params * (len(var) * len(d_H)))
@@ -163,8 +182,13 @@ def simulate_runs(model, f_values, d_H, var, N_repeats, T, changepoint, dt = 0.1
         for j, _ in enumerate(reps):
             for l, v in enumerate(var):
                 for m, h in enumerate(d_H):
-                    step = step_current(N_iter, dt, y_0 = I_0, delay = changepoint, I_h = I_0 + h)
-                    unique_samples = np.random.normal(loc = 0.0, scale = np.sqrt(v), size = num_unique)
+                    if change == 'mean':
+                        step = step_current(N_iter, dt, y_0 = I_0, delay = changepoint, I_h = I_0 + h)
+                        sd = np.sqrt(v)
+                    else:
+                        step = np.full(N_iter, float(I_0))
+                        sd = np.where(post, np.sqrt(v + h), np.sqrt(v))
+                    unique_samples = np.random.normal(size = num_unique) * sd
                     WN = np.repeat(unique_samples, noise_steps)
                     idx = j * N_sims + l * N_neurons * len(d_H) + m * N_neurons
                     I_inj[idx:idx+N_neurons, :] = step + WN     # same noise for all f in this block
@@ -220,11 +244,14 @@ def simulate_w_fluss(model, f_values, d_H, var, window, N_repeats, outfile):
 
 
 def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
-                     stride = 1, repeats_per_batch = 5, t_discard = 200, method = 'ks', spike_file = None):
+                     stride = 1, repeats_per_batch = 5, t_discard = 200, method = 'ks', spike_file = None,
+                     change = 'mean', spike_out = None):
     """
     Changepoint detection for autaptic neurons from the ISI distribution of spikes.
     method = 'ks' (windowed KS test, default), 'llr' (log-likelihood-ratio CUSUM on fitted
     ISI distributions) or 'llr_pair' (LLR on consecutive ISI pairs), see cusum_analysis.
+    change = 'mean' (step in the input current) or 'variance' (jump in the noise variance,
+    d_H is then the variance jump [pA^2]), see simulate_runs.
 
     - Only spike times are simulated (SAVE_ALL = False), so much larger runs are possible.
     - For each condition (var, H, f) the ISIs of all repeats are pooled into two reference
@@ -240,10 +267,12 @@ def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
         t_discard:          spikes before this time [ms] are ignored (initial transient)
         spike_file:         None = simulate. Otherwise a '_spikes.pickle' from an earlier run, which
                             is re-analysed without simulating; f_values, d_H, var, N_repeats and the
-                            changepoint are then taken from the file (model and the passed values are ignored)
+                            changepoint are then taken from the file (model and the passed values are ignored),
+                            and so is change (files without it are 'mean')
+        spike_out:          where to save the spike times (default: outfile + '_spikes.pickle')
     Saves:
         outfile:                    DataFrame with one row per trial
-        outfile + '_spikes.pickle': raw spike times, to re-run the analysis without re-simulating
+        spike_out:                  raw spike times, to re-run the analysis without re-simulating
                                     (only written when simulating)
     """
     if spike_file is not None:
@@ -255,6 +284,7 @@ def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
         spikes = saved['spikes']
         f_values, d_H, var = saved['f_values'], saved['d_H'], saved['var']
         N_repeats, changepoint = saved['N_repeats'], saved['changepoint']
+        change = saved.get('change', 'mean')
 
     else:
         T = 10000 # ms
@@ -264,7 +294,8 @@ def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
         # spikes[(repeat, v, h, f)] = 1D array of spike times
         spikes = {}
         for reps, spike_arr in simulate_runs(model, f_values, d_H, var, N_repeats, T, changepoint, dt = dt,
-                                             repeats_per_batch = repeats_per_batch, save_all = False):
+                                             repeats_per_batch = repeats_per_batch, save_all = False,
+                                             change = change):
             row = 0
             for rep in reps:
                 for v in var:
@@ -277,13 +308,16 @@ def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
                                 spikes[(rep, v, h, f)] = np.array([])
                             row += 1
 
-        spike_out = outfile.replace('.pickle', '') + '_spikes.pickle'
+        if spike_out is None:
+            spike_out = outfile.replace('.pickle', '') + '_spikes.pickle'
         with open(spike_out, 'wb') as file:
             pickle.dump({'spikes': spikes, 'f_values': f_values, 'd_H': d_H, 'var': var,
-                         'N_repeats': N_repeats, 'changepoint': changepoint, 'dt': dt, 'T': T}, file)
+                         'N_repeats': N_repeats, 'changepoint': changepoint, 'dt': dt, 'T': T,
+                         'change': change}, file)
 
     data_df = cusum_analysis(spikes, f_values, d_H, var, N_repeats, n_isi,
-                             changepoint, stride = stride, t_discard = t_discard, method = method)
+                             changepoint, stride = stride, t_discard = t_discard, method = method,
+                             change = change)
     print(data_df.head())
 
     with open(outfile, 'wb') as file:
@@ -363,10 +397,13 @@ def _fisher_across_steps(d_H, post_fits, pairs = False):
 
 
 def cusum_analysis(spikes, f_values, d_H, var, N_repeats, n_isi, changepoint, stride = 1, t_discard = 200,
-                   method = 'ks'):
+                   method = 'ks', change = 'mean'):
     """
     Runs the ISI changepoint analysis on a dict of spike trains (from simulate_w_cusum,
     or re-loaded from its _spikes.pickle). One parallel job per condition (var, H, f).
+    change = 'mean':     H is the step height, saved as 'step_height' ('variance_step' = 0)
+    change = 'variance': H is the noise variance jump, saved as 'variance_step' ('step_height' = 0).
+                         The Fisher measures are then per unit variance, nats/pA^4
         method = 'ks':  windows of n_isi ISIs compared to the pre/post references with a KS test
         method = 'llr': per-ISI log-likelihood ratio under the best-fitting (BIC) gamma /
                         lognormal / inverse Gaussian / log-ISI mixture fit to each reference
@@ -396,8 +433,9 @@ def cusum_analysis(spikes, f_values, d_H, var, N_repeats, n_isi, changepoint, st
     window = n_isi if method == 'ks' else np.nan
     rows = []
     for (v, h, f), (res, name_pre, name_post, div, _) in zip(conditions, results):
+        h_mean, h_var = (h, 0.) if change == 'mean' else (0., h)
         for rep, (CP, score, score_s) in enumerate(res):
-            rows.append([rep, v, h, f, window, score, CP, method, name_pre, name_post, score_s,
+            rows.append([rep, v, h_mean, h_var, f, window, score, CP, method, name_pre, name_post, score_s,
                          div['divergence'], div['divergence per s'], div['KL post||pre'], div['KL pre||post'],
                          div['JS divergence'], div['fisher local'], div['fisher local per s'], *fisher[(v, h, f)],
                          *[div[k] for k in EMPIRICAL_KEYS]])
@@ -410,6 +448,7 @@ def cusum_analysis(spikes, f_values, d_H, var, N_repeats, n_isi, changepoint, st
     #   KL pre||post:       KL(pre || post) per ISI, averaged over the pre reference
     #   JS divergence:      Jensen-Shannon divergence of the pre/post distributions, per ISI (<= ln 2)
     #   fisher local:       Fisher information about the input current, divergence / h^2 [nats/pA^2] (NaN at h = 0)
+    #                       (for change = 'variance': about the noise variance, [nats/pA^4])
     #   fisher local per s: the same from divergence per s
     #   fisher:             Fisher information at I_0 + h from the post distributions of neighbouring step heights
     #   fisher per s:       the same from divergence per s
@@ -417,7 +456,8 @@ def cusum_analysis(spikes, f_values, d_H, var, N_repeats, n_isi, changepoint, st
     #   KS distance:            two-sample KS statistic (0-1)
     #   energy distance:        energy distance of the ISIs [ms]
     #   energy distance (log):  energy distance of log(ISI), scale-free
-    cols = ['N', 'variance', 'step_height', 'autapse f', 'ISI window', 'score', 'change point',
+    # variance is the noise variance before the CP; variance_step its jump at the CP
+    cols = ['N', 'variance', 'step_height', 'variance_step', 'autapse f', 'ISI window', 'score', 'change point',
             'method', 'pre dist', 'post dist', 'score per s', 'divergence', 'divergence per s',
             'KL post||pre', 'KL pre||post', 'JS divergence', 'fisher local', 'fisher local per s',
             'fisher', 'fisher per s', *EMPIRICAL_KEYS]
