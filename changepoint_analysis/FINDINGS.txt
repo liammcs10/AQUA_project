@@ -11,6 +11,8 @@ the change point from membrane potential data directly.
 
 INITIAL FINDINGS:
   - choice of noise affects things. If noise is varying too fast, it essentially isn't there.
+  ** Parametric measures may be failing the autaptic case if the ISI dsitribution cannot be modelled by
+  the family of distributions chosen. **
 
   CPA_data_N10.PICKLE
     - 10 repeats for noise values. Noise is sampled at 10,000 Hz!
