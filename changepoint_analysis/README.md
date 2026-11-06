@@ -134,6 +134,19 @@ For a variance change both Fisher measures are about the noise variance (divided
 
 The CUSUM run also writes `CPA_cusum_{CHANGE}_N{N_repeats}_spikes.pickle`: a dict with `spikes[(repeat, v, h, f)]` (spike times; h is Δσ² for a variance change) plus `f_values`, `d_H`, `var`, `N_repeats`, `changepoint`, `dt`, `T` and `change` (missing in older files, which are all `'mean'`).
 
+### 6. Change point detection on population PSTHs (`psth_cusum_analysis()`)
+
+Re-analyses a saved `_spikes.pickle` using population activity instead of single-trial ISIs. Not called by `main()` (there is a commented-out example).
+
+1. For each condition (variance, step height, `f`) and population size k (`k_values`, default 5, 10, 25, 50), `n_resamples` (100) PSTHs are built, each summing the spike counts of k random trials (no replacement) in `bin_ms` (50 ms) bins from `t_discard` to T (`psth_resamples`).
+2. Each bin's value is **count + 1**, so empty bins get a finite density under the positive-only families.
+3. The bins of all resamples are pooled into pre/post references (`reference_bins`: bins ending by / starting at the CP).
+4. Each PSTH is scored with the existing detectors, `method`:
+   - `'llr'`: `fit_isi_distribution` on each reference, then `llr_cp`
+   - `'ks'`: `ks_window_cp` with windows of `n_win` bins
+   - `'fluss'`: `fluss_cp` with a window of `n_win` bins; the score is the CAC
+5. Output `CPA_psth_{change}_N{N_repeats}_{method}.pickle`, one row per resample per k per condition. The columns are `N` (resample), `k`, `variance`, `step_height`, `variance_step`, `autapse f`, `bin_ms`, `score`, `change point`, `method`, `pre dist`, `post dist`, `score per s` and the divergence and model-free distance columns from step 5. Divergences are per bin (`divergence per s` per second); they are NaN for `'ks'` and `'fluss'`. There are no Fisher columns.
+
 ### Running
 
 ```bash
@@ -149,7 +162,8 @@ Imported into `CPA_with_AQUA.py` with `from CP_functions import *`. The notebook
 **Indexing and FLUSS**
 
 - `find_idx(f, v, h, f_vals, v_vals, h_vals)` returns the row index of the neuron with autapse strength `f`, variance `v` and step height `h` in a batch. Used by `CPA_TRACES_with_AQUA.ipynb` to pull out single traces.
-- `process_single_row(row_idx, data_matrix, window_size, dt)` runs FLUSS on one voltage trace and returns `(CAC, change point)` (step 4a).
+- `fluss_cp(x, window_size, dt)` runs FLUSS on any 1D series and returns `(CAC, change point)`. stumpy's idealised arc curve is cached per series length (it takes ~0.7 s to build and depends only on the length).
+- `process_single_row(row_idx, data_matrix, window_size, dt)` calls `fluss_cp` on one voltage trace (step 4a).
 
 **ISI CUSUM** (step 4b)
 
@@ -157,7 +171,12 @@ Imported into `CPA_with_AQUA.py` with `from CP_functions import *`. The notebook
 - `ks_stat_windows`, `ks_window_cp`: vectorised two-sample KS statistic and the windowed KS detector.
 - `LogGMM`, `fit_isi_distribution`, `llr_cp`: 1D distribution fits (BIC choice) and the LLR detector.
 - `isi_pairs`, `reference_pairs`, `LogPairGMM`, `fit_isi_pair_distribution`, `llr_pair_cp`: the ISI-pair (Markov) versions.
-- `evidence_rate`, `distribution_divergences`: score per second, and KL / Jeffreys / Jensen–Shannon divergences between any two fitted distributions (nats).
+- `evidence_rate`, `distribution_divergences`: score per second, and KL / Jeffreys / Jensen–Shannon divergences between any two fitted distributions (nats). `distribution_divergences(..., sample_ms = bin_ms)` uses a fixed time per sample for `divergence per s` (PSTH bins) in place of the mean ISI.
+
+**PSTH lead-in** (step 6)
+
+- `psth_resamples(trials, k, n_resamples, bin_ms, T, t_discard, rng)`: population spike counts of k random trials per bin, `n_resamples` times.
+- `reference_bins(X, t_bin, bin_ms, t_cp)`: pooled pre/post bin values, the PSTH counterpart of `reference_isis`.
 
 All detectors take `return_trace = True` to also return the per-window/per-ISI values and the CUSUM curve, for plotting.
 
@@ -177,6 +196,7 @@ All detectors take `return_trace = True` to also return the per-window/per-ISI v
 | `AQUA_CPA_plots_CUSUM_mean.ipynb` | Loads a CUSUM results pickle and plots psychometric curves, AUC of score / score per s / divergence vs `f` and variance, change point errors, weighted accuracy and change point histograms. |
 | `CPA_CUSUM_variance.ipynb` | Analysis of the variance change point (`CPA_cusum_variance_N100_llr_pair.pickle`): example ISI / ISI-pair distributions, score and AUC, change point errors, hit rate and tolerance ROC, histograms, and the divergence measures, all against the variance jump Δσ². Combines the three `_mean` notebooks. |
 | `CPA_divergences_CUSUM_mean.ipynb` | Plots the divergence measures (KL, Jeffreys, JS, local and across-step Fisher information) against step height, per noise level and per neuron. Also: their mean vs `f`, JS / Fisher heatmaps, and checks (local vs across-step Fisher, evidence collected vs Jeffreys per s). Ends with the model-free KS / energy distances and how they compare with the fitted measures. Uses one row per condition; drops var = 0 by default. |
+| `CPA_population.ipynb` | Population view of the CUSUM spike files: raster of all 100 repeats with the trial-averaged firing rate (PSTH) below, for a few example conditions and autapse strengths. One section for the mean change and one for the variance change, each with a full-trial and a zoomed (CP ± 500 ms) figure. Uses `plot_raster` from `aqua.plotting_functions`. Section 3 runs the CUSUM / FLUSS detectors on k-trial PSTHs (`CPA_psth_*` files): a worked `llr` example, then hit rate vs change size and vs `f` for each k. |
 | `AQUA_CPA_plots_FLUSS.ipynb` | The same for FLUSS results (CAC psychometric curves, AUC vs `f`, change point error distributions). Saves figures to `plots/`. |
 | `CPA_TRACES_with_AQUA.ipynb` | Re-simulates selected (f, variance, step height) conditions and plots their traces with FLUSS scores, to explain unusual results. |
 | `changepoint_neurons.ipynb` | Single-neuron exploration: autaptic vs non-autaptic responses to a step, trying ESST, FLUSS and RuLSIF on the voltage trace. |
@@ -204,6 +224,7 @@ All detectors take `return_trace = True` to also return the per-window/per-ISI v
 | `CPA_cusum_mean_N100_llr_gmm3.pickle` | LLR CUSUM, plus 2- and 3-component mixtures (current default), with score per s and divergence columns. |
 | `CPA_cusum_mean_N100_llr_pair.pickle` | ISI-pair LLR CUSUM, with score per s and divergence columns. |
 | `CPA_cusum_mean_N100_llr_pair_div.pickle` | The same re-analysed from the spike file, plus the KL, JS and Fisher information columns. |
+| `CPA_psth_{mean,variance}_N100_{llr,ks,fluss}.pickle` | `psth_cusum_analysis` on the two spike files: change points of k-trial PSTHs (k = 5, 10, 25, 50, 100 resamples, 50 ms bins). |
 | `CPA_test_data.pickle`, `CPA_test_.pickle`, `results_test.pickle` | Small test runs. |
 | `plots/` | FLUSS figures for the N10 and N100 data sets (CAC, change point and AUC plots). |
 | `nohup.out` | Log of the last background run. |

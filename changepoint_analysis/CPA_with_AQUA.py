@@ -125,6 +125,8 @@ def main():
     simulate_w_cusum(RS, f_values, d_H, var, n_isi, N_repeats, outfile, repeats_per_batch = 5, method = method,
                      spike_file = spike_file, change = CHANGE, spike_out = spike_out)
 
+    # CUSUM on population PSTHs of k random trials, from a saved spike file
+    #psth_cusum_analysis(spike_out, f'CPA_psth_{CHANGE}_N{N_repeats}_llr.pickle', method = 'llr')
 
 
 
@@ -462,6 +464,87 @@ def cusum_analysis(spikes, f_values, d_H, var, N_repeats, n_isi, changepoint, st
             'KL post||pre', 'KL pre||post', 'JS divergence', 'fisher local', 'fisher local per s',
             'fisher', 'fisher per s', *EMPIRICAL_KEYS]
     return pd.DataFrame(rows, columns = cols)
+
+
+def _psth_condition(trials, changepoint, T, bin_ms, k_values, n_resamples, t_discard, method, n_win, seed):
+    """
+    PSTH version of _cusum_condition for one condition (var, H, f). For each k, builds n_resamples
+    population PSTHs of k random trials, scores x = count + 1 (so empty bins have finite densities),
+    pools the bins of all resamples into pre/post references and finds the CP of each resample.
+    Returns a list of (k, resample, CP, score, score per s, pre family, post family, divergences dict).
+    """
+    rng = np.random.default_rng(seed)
+    out = []
+    for k in k_values:
+        X, t_bin = psth_resamples(trials, k, n_resamples, bin_ms, T, t_discard, rng)
+        X = X + 1.
+        pre_ref, post_ref = reference_bins(X, t_bin, bin_ms, changepoint)
+        div = dict.fromkeys(DIVERGENCE_KEYS, np.nan)
+        div.update(empirical_distances(pre_ref, post_ref))
+        name_pre = name_post = None
+
+        if method == 'llr':
+            dist_pre, name_pre, _ = fit_isi_distribution(pre_ref)
+            dist_post, name_post, _ = fit_isi_distribution(post_ref)
+            div.update(distribution_divergences(dist_pre, dist_post, pre_ref, post_ref, sample_ms = bin_ms))
+            for n, x in enumerate(X):
+                CP, score, t, l, _ = llr_cp(x, t_bin, dist_pre, dist_post, return_trace = True)
+                out.append((k, n, CP, score, evidence_rate(t, l, np.full(len(l), bin_ms), CP), name_pre, name_post, div))
+        elif method == 'ks':
+            for n, x in enumerate(X):
+                CP, score = ks_window_cp(x, t_bin, pre_ref, post_ref, n_win)
+                out.append((k, n, CP, score, np.nan, None, None, div))
+        elif method == 'fluss':
+            for n, x in enumerate(X):
+                CAC, t_peak = fluss_cp(x, n_win, bin_ms)
+                out.append((k, n, t_discard + t_peak, CAC, np.nan, None, None, div))
+        else:
+            raise ValueError(f"method must be 'llr', 'ks' or 'fluss', not {method!r}")
+    return out
+
+
+def psth_cusum_analysis(spike_file, outfile, method = 'llr', bin_ms = 50, k_values = (5, 10, 25, 50),
+                        n_resamples = 100, n_win = 5, t_discard = 200, seed = 0):
+    """
+    Change point detection on population PSTHs instead of single-trial ISIs, from a saved
+    '_spikes.pickle' (simulate_w_cusum). For every condition (var, H, f) and population size k,
+    n_resamples PSTHs are built from k random trials (of the N_repeats), binned at bin_ms from
+    t_discard to T, and the CP of each is estimated:
+        method = 'llr':   per-bin log-likelihood ratio of (count + 1) under the best-fitting (BIC)
+                          family from fit_isi_distribution, CUSUM argmin (llr_cp)
+        method = 'ks':    windows of n_win bins compared to the pre/post references (ks_window_cp)
+        method = 'fluss': FLUSS on the PSTH with a window of n_win bins; score = CAC (fluss_cp)
+    References pool the bins of all resamples of a condition, so (as in the ISI pipeline) they
+    include the PSTH being scored. CP resolution is one bin.
+    Saves and returns a DataFrame with one row per resample (N) per k per condition.
+    """
+    with open(spike_file, 'rb') as file:
+        saved = pickle.load(file)
+    spikes, f_values, d_H, var = saved['spikes'], saved['f_values'], saved['d_H'], saved['var']
+    N_repeats, changepoint, T = saved['N_repeats'], saved['changepoint'], saved['T']
+    change = saved.get('change', 'mean')
+
+    conditions = [(v, h, f) for v in var for h in d_H for f in f_values]
+    results = Parallel(n_jobs = -1)(
+        delayed(_psth_condition)([spikes[(rep, v, h, f)] for rep in range(N_repeats)], changepoint, T, bin_ms,
+                                 k_values, n_resamples, t_discard, method, n_win, [seed, i])
+        for i, (v, h, f) in enumerate(tqdm(conditions))
+    )
+
+    rows = []
+    for (v, h, f), res in zip(conditions, results):
+        h_mean, h_var = (h, 0.) if change == 'mean' else (0., h)
+        for k, n, CP, score, score_s, name_pre, name_post, div in res:
+            rows.append([n, k, v, h_mean, h_var, f, bin_ms, score, CP, method, name_pre, name_post, score_s,
+                         *[div[c] for c in DIVERGENCE_KEYS], *[div[c] for c in EMPIRICAL_KEYS]])
+    # divergences are per bin (divergence per s: per second); NaN for 'ks' and 'fluss'
+    cols = ['N', 'k', 'variance', 'step_height', 'variance_step', 'autapse f', 'bin_ms', 'score', 'change point',
+            'method', 'pre dist', 'post dist', 'score per s', *DIVERGENCE_KEYS, *EMPIRICAL_KEYS]
+    df = pd.DataFrame(rows, columns = cols)
+
+    with open(outfile, 'wb') as file:
+        pickle.dump(df, file)
+    return df
 
 
 if __name__ == "__main__":

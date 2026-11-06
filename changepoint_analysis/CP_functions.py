@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
 import stumpy
+from stumpy.floss import _iac
+from functools import lru_cache
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.cm as cm
@@ -29,22 +31,31 @@ def find_idx(f, v, h, f_vals, v_vals, h_vals):
     return int(idx)
 
 
+@lru_cache(maxsize = None)
+def _fluss_iac(width):
+    '''stumpy's idealised arc curve: depends only on the width (and a fixed seed), and takes ~0.7 s, so cache it'''
+    return _iac(width)
+
+
+def fluss_cp(x, window_size, dt):
+    '''
+    FLUSS on any 1D series (V trace, PSTH, ...). The score is 1 - corrected arc curve.
+    OUT
+        CAC:    peak score (confidence)
+        CP:     index of the peak x dt (time from the start of x)
+    '''
+    mat_prof = stumpy.stump(np.asarray(x, dtype = float), m = window_size)
+    I = mat_prof[:, 1].astype(np.int64)
+    arc_crossings, _ = stumpy.fluss(I, L = window_size, n_regimes = 1, custom_iac = _fluss_iac(len(I)))
+    score = 1 - arc_crossings
+    return np.max(score), np.argmax(score)*dt
+
+
 def process_single_row(row_idx, data_matrix, window_size, dt):
     '''
     Computes the matrix profile on a single row and returns the CAC
     '''
-    row_data = data_matrix[row_idx, 0, :]
-
-    mat_prof = stumpy.stump(row_data, m = window_size)
-
-    arc_crossings, _ = stumpy.fluss(mat_prof[:, 1], L = window_size, n_regimes = 1)
-
-    score = 1 - arc_crossings
-
-    CAC = np.max(score)
-    CP = np.argmax(score)*dt
-
-    return (CAC, CP)
+    return fluss_cp(data_matrix[row_idx, 0, :], window_size, dt)
 
 
 def psychometric_curve(data, x, y, hue = 'autapse f', fig = None, ax = None, add_colorbar = True, colorbar_label = 'Autapse Strength'):
@@ -747,7 +758,7 @@ def empirical_distances(pre_ref, post_ref):
 DIVERGENCE_KEYS = ('KL post||pre', 'KL pre||post', 'divergence', 'divergence per s', 'JS divergence')
 
 
-def distribution_divergences(dist_pre, dist_post, pre_ref, post_ref, pairs = False):
+def distribution_divergences(dist_pre, dist_post, pre_ref, post_ref, pairs = False, sample_ms = None):
     '''
     Divergences between the fitted pre and post distributions, estimated on the reference
     data (unclipped). With KL(post || pre) = mean over post_ref of [log p_post - log p_pre]
@@ -759,6 +770,8 @@ def distribution_divergences(dist_pre, dist_post, pre_ref, post_ref, pairs = Fal
                             with m = (p_pre + p_post) / 2; nats per ISI, bounded by ln 2
     For pairs = True the conditional densities p(ISI_n | ISI_{n-1}) are used (references of shape (n, 2)).
     Works for any two fitted distributions, e.g. the post distributions of two step heights.
+    sample_ms: time per sample [ms] for 'divergence per s' (e.g. the PSTH bin width). None = the
+               mean ISI of each reference, i.e. the samples are ISIs.
     All values are NaN if either distribution is missing.
     '''
     if dist_pre is None or dist_post is None or len(pre_ref) == 0 or len(post_ref) == 0:
@@ -781,11 +794,43 @@ def distribution_divergences(dist_pre, dist_post, pre_ref, post_ref, pairs = Fal
     lm_post = np.logaddexp(lpre_on_post, lpost_on_post) - np.log(2)
     JS = 0.5 * np.mean(lpost_on_post - lm_post) + 0.5 * np.mean(lpre_on_pre - lm_pre)
 
+    ms_pre, ms_post = (isi_pre.mean(), isi_post.mean()) if sample_ms is None else (sample_ms, sample_ms)
     return {'KL post||pre': kl_post_pre,
             'KL pre||post': kl_pre_post,
             'divergence': kl_post_pre + kl_pre_post,
-            'divergence per s': (kl_post_pre / isi_post.mean() + kl_pre_post / isi_pre.mean()) * 1000.,
+            'divergence per s': (kl_post_pre / ms_post + kl_pre_post / ms_pre) * 1000.,
             'JS divergence': JS}
+
+
+# ---------------------------------------------------------------------------
+# PSTH lead-in: population spike counts in place of ISIs (used by psth_cusum_analysis)
+# ---------------------------------------------------------------------------
+
+def psth_resamples(trials, k, n_resamples, bin_ms, T, t_discard, rng):
+    '''
+    Population PSTHs of k randomly chosen trials (without replacement), n_resamples times.
+    Bins run from t_discard to T, so a change point on a bin edge falls between bins.
+    IN
+        trials: list of 1D spike time arrays [ms], one per repeat
+        rng:    np.random.Generator
+    OUT
+        X:      (n_resamples, n_bins) summed spike counts per bin
+        t_bin:  end time of each bin [ms]
+    '''
+    edges = np.arange(t_discard, T + bin_ms/2, bin_ms)
+    counts = np.array([np.histogram(np.asarray(s, dtype = float), bins = edges)[0] for s in trials])
+    X = np.array([counts[rng.choice(len(trials), k, replace = False)].sum(0) for _ in range(n_resamples)])
+    return X, edges[1:]
+
+
+def reference_bins(X, t_bin, bin_ms, t_cp):
+    '''
+    Pools the bin values of all resamples into pre- (bin ends by t_cp) and post-changepoint
+    (bin starts at/after t_cp) references, as reference_isis does for ISIs.
+    OUT
+        pre_ref, post_ref:  sorted 1D arrays
+    '''
+    return np.sort(X[:, t_bin <= t_cp].ravel()), np.sort(X[:, t_bin - bin_ms >= t_cp].ravel())
 
 
 # ---------------------------------------------------------------------------
