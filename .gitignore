@@ -2,4 +2,5 @@
 *.pickle
 *.png
 *.mp4
+*.log
 /micro-circuit/output/*
