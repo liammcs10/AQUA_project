@@ -53,6 +53,9 @@ import matplotlib.colors as mcolors
 from scipy.signal import convolve, windows
 from tqdm import tqdm
 import pickle
+import sys
+import os
+import glob
 import seaborn as sns
 sns.set_theme()
 
@@ -84,21 +87,22 @@ def main():
     '''
 
     # for now only vary the peak autapse current? 
-    f_values = np.linspace(0, 300, 5) # 15
-    f_values = np.array([0, 100, 150, 200, 220, 240, 260, 280, 300, 350, 400])
+    #f_values = np.array([0, 100, 150, 200, 220, 240, 260, 280, 300, 350, 400])
+    f_values = np.concatenate([[0], np.arange(100, 410, 10)])      # f = 0 is the no-autapse baseline
     print(f_values)
 
     # what changes at the CP: 'mean' (step in the input current) or 'variance' (jump in the noise variance)
-    CHANGE = 'variance'
+    CHANGE = os.environ.get('CHANGE', 'mean')
 
     if CHANGE == 'mean':
         # height of the change point
         #d_H = np.linspace(0, 50, 10)
         #d_H = np.linspace(0, 5, 10)
-        d_H = np.array([0, 1, 2, 3, 4, 5, 10, 12, 15, 18, 20, 25, 30, 40, 50])
+        #d_H = np.array([0, 1, 2, 3, 4, 5, 10, 12, 15, 18, 20, 25, 30, 40, 50])
+        d_H = np.round(np.concatenate([np.arange(0, 10, 0.5), np.arange(10, 21, 1)]), 1)
 
-        # noise variance
-        var = np.linspace(0, 50, 5)
+        # noise variance (var = 0 dropped: every repeat would be the identical spike train)
+        var = np.array([12.5, 25, 37.5, 50])
         #var = np.array([0])
     else:
         # jump in the noise variance at the CP [pA^2]; the mean stays at I_0
@@ -111,28 +115,45 @@ def main():
     window = 300
     print(f"WINDOW: {window}")
 
-    N_repeats = 100
+    N_repeats = 250
+
+    # protocol of CPA_population_random_init.ipynb: random initial state + high-noise warm-up (run extended by T_WARMUP)
+    RANDOM_INIT, T_WARMUP, VAR_WARMUP = True, 500, 250     # -, ms, pA^2
+    warm = dict(random_init = RANDOM_INIT, t_warmup = T_WARMUP, var_warmup = VAR_WARMUP)
 
     #outfile = 'CPA_data_N100.pickle'
     #simulate_w_fluss(RS, f_values, d_H, var, window, N_repeats, outfile)
 
     # ISI / KS changepoint (spike times only)
     n_isi = 5       # ISIs per window (RS neuron fires ~4 Hz at I_0 = 60, so only ~6-12 ISIs before the CP)
-    method = 'llr_pair'
+    method = 'llr_pair'     # or 'ks', 'llr', 'edivisive_isi', 'edivisive_time', 'npid'
     spike_file = None   # None = simulate; or e.g. 'CPA_cusum_mean_N100_spikes.pickle' to re-analyse saved spikes
     outfile = f'CPA_cusum_{CHANGE}_N{N_repeats}_{method}.pickle'
     spike_out = f'CPA_cusum_{CHANGE}_N{N_repeats}_spikes.pickle'
-    simulate_w_cusum(RS, f_values, d_H, var, n_isi, N_repeats, outfile, repeats_per_batch = 5, method = method,
-                     spike_file = spike_file, change = CHANGE, spike_out = spike_out)
+
+    # parallel runs: `python CPA_with_AQUA.py start stop` simulates repeats [start, stop) (spikes only),
+    # `python CPA_with_AQUA.py merge` joins the parts into spike_out
+    if len(sys.argv) > 1 and sys.argv[1] == 'merge':
+        merge_spike_files(sorted(glob.glob(spike_out.replace('.pickle', '_r*.pickle'))), spike_out)
+        return
+    if len(sys.argv) == 3:
+        start, stop = int(sys.argv[1]), int(sys.argv[2])
+        simulate_w_cusum(RS, f_values, d_H, var, n_isi, stop, None, repeats_per_batch = 1, change = CHANGE,
+                         spike_out = spike_out.replace('.pickle', f'_r{start}-{stop}.pickle'), rep_start = start, **warm)
+        return
+
+    simulate_w_cusum(RS, f_values, d_H, var, n_isi, N_repeats, outfile, repeats_per_batch = 1, method = method,
+                     spike_file = spike_file, change = CHANGE, spike_out = spike_out, **warm)
 
     # CUSUM on population PSTHs of k random trials, from a saved spike file
-    #psth_cusum_analysis(spike_out, f'CPA_psth_{CHANGE}_N{N_repeats}_llr.pickle', method = 'llr')
+    psth_cusum_analysis(spike_out, f'CPA_psth_{CHANGE}_N{N_repeats}_llr.pickle', method = 'llr')
 
 
 
 def simulate_runs(model, f_values, d_H, var, N_repeats, T, changepoint, dt = 0.1,
                   I_0 = 60, noise_rate = 50, e = 0.2, tau = 2.0,
-                  repeats_per_batch = 1, save_all = True, change = 'mean'):
+                  repeats_per_batch = 1, save_all = True, change = 'mean', rep_start = 0, random_init = False,
+                  t_warmup = 0, var_warmup = 0):
     """
     Simulates every (repeat, var, H, f) combination with a noisy step current and yields
     the results one batch of repeats at a time (so full V traces never all sit in memory).
@@ -148,6 +169,11 @@ def simulate_runs(model, f_values, d_H, var, N_repeats, T, changepoint, dt = 0.1
         repeats_per_batch:  repeats stacked into one batchAQUA call (limits I_inj memory)
         save_all:           passed to batchAQUA.update_batch (False = spike times only)
         change:             'mean' or 'variance'
+        rep_start:          first repeat index (repeats rep_start .. N_repeats-1 are simulated)
+        random_init:        False = every neuron starts at (v, u, w) = (-60, 0, 0); True = each neuron draws
+                            v_0 ~ U[-100, 20], u_0 ~ U[-100, 100], w_0 ~ U[-50, 50]
+        t_warmup, var_warmup: noise variance is var_warmup [pA^2] for t < t_warmup [ms], then the condition's
+                            own variance (mean unchanged). t_warmup should be < changepoint
     Yields:
         reps:   list of repeat indices in this batch
         out:    (X, t, spikes) if save_all, else the NaN-padded spike time array
@@ -172,11 +198,12 @@ def simulate_runs(model, f_values, d_H, var, N_repeats, T, changepoint, dt = 0.1
     noise_steps = int(1/noise_rate * (1000/dt))
     num_unique = N_iter // noise_steps      # number of random numbers to sample
     post = np.arange(num_unique) * noise_steps * dt >= changepoint     # noise samples held after the CP
+    warm = np.arange(num_unique) * noise_steps * dt < t_warmup         # noise samples held in the warm-up
 
     # same neuron parameters for every (var, H) block and every repeat
     params_df = pd.DataFrame(params * (len(var) * len(d_H)))
 
-    for r0 in range(0, N_repeats, repeats_per_batch):
+    for r0 in range(rep_start, N_repeats, repeats_per_batch):
         reps = list(range(r0, min(r0 + repeats_per_batch, N_repeats)))
         print(f"Repeats {reps[0]}-{reps[-1]} of {N_repeats}")
 
@@ -190,13 +217,17 @@ def simulate_runs(model, f_values, d_H, var, N_repeats, T, changepoint, dt = 0.1
                     else:
                         step = np.full(N_iter, float(I_0))
                         sd = np.where(post, np.sqrt(v + h), np.sqrt(v))
+                    sd = np.where(warm, np.sqrt(var_warmup), sd)
                     unique_samples = np.random.normal(size = num_unique) * sd
                     WN = np.repeat(unique_samples, noise_steps)
                     idx = j * N_sims + l * N_neurons * len(d_H) + m * N_neurons
                     I_inj[idx:idx+N_neurons, :] = step + WN     # same noise for all f in this block
 
         batch_df = pd.concat([params_df] * len(reps), ignore_index = True)
-        x_start = np.full((len(batch_df), 3), fill_value = np.array([-60, 0, 0]))
+        if random_init:
+            x_start = np.random.uniform([-100, -100, -50], [20, 100, 50], size = (len(batch_df), 3))
+        else:
+            x_start = np.full((len(batch_df), 3), fill_value = np.array([-60, 0, 0]))
         t_start = np.zeros(len(batch_df))
 
         batch = batchAQUA(batch_df)
@@ -247,11 +278,12 @@ def simulate_w_fluss(model, f_values, d_H, var, window, N_repeats, outfile):
 
 def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
                      stride = 1, repeats_per_batch = 5, t_discard = 200, method = 'ks', spike_file = None,
-                     change = 'mean', spike_out = None):
+                     change = 'mean', spike_out = None, rep_start = 0, random_init = False, t_warmup = 0, var_warmup = 0):
     """
     Changepoint detection for autaptic neurons from the ISI distribution of spikes.
     method = 'ks' (windowed KS test, default), 'llr' (log-likelihood-ratio CUSUM on fitted
-    ISI distributions) or 'llr_pair' (LLR on consecutive ISI pairs), see cusum_analysis.
+    ISI distributions), 'llr_pair' (LLR on consecutive ISI pairs), or the reference-free
+    'edivisive_isi', 'edivisive_time', 'npid', see cusum_analysis.
     change = 'mean' (step in the input current) or 'variance' (jump in the noise variance,
     d_H is then the variance jump [pA^2]), see simulate_runs.
 
@@ -272,6 +304,9 @@ def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
                             changepoint are then taken from the file (model and the passed values are ignored),
                             and so is change (files without it are 'mean')
         spike_out:          where to save the spike times (default: outfile + '_spikes.pickle')
+        random_init, t_warmup, var_warmup: see simulate_runs; T and the changepoint are extended by t_warmup
+        rep_start:          first repeat to simulate (N_repeats is then the stop index), see merge_spike_files.
+                            outfile = None skips the CP analysis and returns the spikes dict
     Saves:
         outfile:                    DataFrame with one row per trial
         spike_out:                  raw spike times, to re-run the analysis without re-simulating
@@ -289,15 +324,16 @@ def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
         change = saved.get('change', 'mean')
 
     else:
-        T = 10000 # ms
+        T = 10000 + t_warmup # ms
         dt = 0.1
-        changepoint = T // 2 # ms
+        changepoint = 5000 + t_warmup # ms
 
         # spikes[(repeat, v, h, f)] = 1D array of spike times
         spikes = {}
         for reps, spike_arr in simulate_runs(model, f_values, d_H, var, N_repeats, T, changepoint, dt = dt,
                                              repeats_per_batch = repeats_per_batch, save_all = False,
-                                             change = change):
+                                             change = change, rep_start = rep_start, random_init = random_init,
+                                             t_warmup = t_warmup, var_warmup = var_warmup):
             row = 0
             for rep in reps:
                 for v in var:
@@ -315,7 +351,10 @@ def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
         with open(spike_out, 'wb') as file:
             pickle.dump({'spikes': spikes, 'f_values': f_values, 'd_H': d_H, 'var': var,
                          'N_repeats': N_repeats, 'changepoint': changepoint, 'dt': dt, 'T': T,
-                         'change': change}, file)
+                         'change': change, 'rep_start': rep_start,
+                         'random_init': random_init, 't_warmup': t_warmup, 'var_warmup': var_warmup}, file)
+        if outfile is None:
+            return spikes
 
     data_df = cusum_analysis(spikes, f_values, d_H, var, N_repeats, n_isi,
                              changepoint, stride = stride, t_discard = t_discard, method = method,
@@ -328,20 +367,58 @@ def simulate_w_cusum(model, f_values, d_H, var, n_isi, N_repeats, outfile,
     return data_df
 
 
+def merge_spike_files(parts, out):
+    """
+    Joins '_spikes.pickle' parts from runs over disjoint repeat ranges (simulate_w_cusum with rep_start)
+    into one spike file covering repeats 0 .. max stop, in the usual format.
+    """
+    saved = []
+    for p in parts:
+        with open(p, 'rb') as file:
+            saved.append(pickle.load(file))
+    ref = saved[0]
+    spikes = {}
+    for p, s in zip(parts, saved):
+        for k in ('f_values', 'd_H', 'var'):
+            assert np.array_equal(s[k], ref[k]), f"{p}: {k} differs from {parts[0]}"
+        for k in ('changepoint', 'dt', 'T', 'change', 'random_init', 't_warmup', 'var_warmup'):
+            assert s[k] == ref[k], f"{p}: {k} differs from {parts[0]}"
+        spikes.update(s['spikes'])
+
+    N_repeats = max(s['N_repeats'] for s in saved)
+    missing = [(rep, v, h, f) for rep in range(N_repeats) for v in ref['var'] for h in ref['d_H']
+               for f in ref['f_values'] if (rep, v, h, f) not in spikes]
+    assert not missing, f"{len(missing)} spike trains missing, e.g. {missing[:3]}"
+
+    merged = {**ref, 'spikes': spikes, 'N_repeats': N_repeats, 'rep_start': 0}
+    with open(out, 'wb') as file:
+        pickle.dump(merged, file)
+    print(f"Merged {len(parts)} parts -> {out}: {N_repeats} repeats, {len(spikes)} spike trains")
+    return merged
+
+
+MODEL_FREE_METHODS = ('ks', 'edivisive_isi', 'edivisive_time', 'npid')    # no fitted ISI distributions
+
+
 def _cusum_condition(trials, h, changepoint, n_isi, stride, t_discard, method = 'ks'):
     """
     Builds the references for one condition (step height h) and finds the CP for each of its repeats.
     Returns (list of (CP, score, score per s), pre family, post family, divergences dict, post fit)
     where post fit = (post distribution, post reference) for the Fisher information across step heights.
-    Families, post fit and the per-second / divergence values are None / NaN for 'ks'.
+    Families, post fit and the per-second / divergence values are None / NaN for MODEL_FREE_METHODS.
     The model-free distances (empirical_distances) between the pooled ISIs are computed for every method.
     """
     isis = [spike_isis(s, t_discard) for s in trials]
     pre_ref, post_ref = reference_isis(isis, changepoint)
     emp = empirical_distances(pre_ref, post_ref)
 
-    if method == 'ks':
-        res = [ks_window_cp(isi, t_isi, pre_ref, post_ref, n_isi, stride) + (np.nan,) for isi, t_isi in isis]
+    # reference-free detectors ('ks' uses the references but fits no distributions)
+    detect = {'ks':             lambda i, t: ks_window_cp(i, t, pre_ref, post_ref, n_isi, stride),
+              'edivisive_isi':  lambda i, t: edivisive_isi_cp(i, t, 'isi'),
+              'edivisive_time': lambda i, t: edivisive_isi_cp(i, t, 'time'),
+              'npid':           npid_cp}
+    if method in detect:
+        res = [detect[method](isi, t_isi) + (np.nan,) for isi, t_isi in isis]
         div = dict.fromkeys(DIVERGENCE_KEYS + ('fisher local', 'fisher local per s'), np.nan)
         return res, None, None, {**div, **emp}, (None, post_ref)
 
@@ -367,7 +444,7 @@ def _cusum_condition(trials, h, changepoint, n_isi, stride, t_discard, method = 
         post_fit = (dist_post, post_pairs)
 
     else:
-        raise ValueError(f"method must be 'ks', 'llr' or 'llr_pair', not {method!r}")
+        raise ValueError(f"method must be one of {MODEL_FREE_METHODS + ('llr', 'llr_pair')}, not {method!r}")
 
     # local Fisher information about the input current, J ~ I h^2 for small h
     div['fisher local'] = div['divergence'] / h**2 if h != 0 else np.nan
@@ -412,6 +489,11 @@ def cusum_analysis(spikes, f_values, d_H, var, N_repeats, n_isi, changepoint, st
         method = 'llr_pair': first-order Markov version; per-ISI log-likelihood ratio of
                         p(ISI_n | ISI_{n-1}) from 2D log-ISI mixtures (K = 1-3, BIC) fitted to
                         consecutive pairs; captures burst structure. n_isi and stride unused for both LLR methods
+        method = 'edivisive_isi':  e-divisive (energy) best single split of each trial's ISI series, one point per ISI
+        method = 'edivisive_time': the same on the ISI step function sampled every 10 ms (long ISIs weigh more)
+        method = 'npid':           Non-Parametric Isolate-Detect (Anastasiou & Fryzlewicz 2025) on the ISI series;
+                                   the strongest detection is the CP, score = its CUSUM / sqrt(log n) (0, CP NaN if none)
+        The last three need no references (nor n_isi / stride); see CP_functions.
     """
     conditions = [(v, h, f) for v in var for h in d_H for f in f_values]
 
@@ -425,7 +507,7 @@ def cusum_analysis(spikes, f_values, d_H, var, N_repeats, n_isi, changepoint, st
     fisher = {}
     for v in var:
         for f in f_values:
-            if method == 'ks':
+            if method in MODEL_FREE_METHODS:
                 fisher.update({(v, h, f): (np.nan, np.nan) for h in d_H})
                 continue
             post_fits = {h: res[4] for (cv, h, cf), res in zip(conditions, results) if cv == v and cf == f}
@@ -498,8 +580,12 @@ def _psth_condition(trials, changepoint, T, bin_ms, k_values, n_resamples, t_dis
             for n, x in enumerate(X):
                 CAC, t_peak = fluss_cp(x, n_win, bin_ms)
                 out.append((k, n, t_discard + t_peak, CAC, np.nan, None, None, div))
+        elif method in LIBRARY_METHODS:
+            for n, x in enumerate(X):
+                CP, score = library_cp(x, t_bin, bin_ms, method)
+                out.append((k, n, CP, score, np.nan, None, None, div))
         else:
-            raise ValueError(f"method must be 'llr', 'ks' or 'fluss', not {method!r}")
+            raise ValueError(f"method must be 'llr', 'ks', 'fluss' or one of {list(LIBRARY_METHODS)}, not {method!r}")
     return out
 
 
@@ -514,6 +600,8 @@ def psth_cusum_analysis(spike_file, outfile, method = 'llr', bin_ms = 50, k_valu
                           family from fit_isi_distribution, CUSUM argmin (llr_cp)
         method = 'ks':    windows of n_win bins compared to the pre/post references (ks_window_cp)
         method = 'fluss': FLUSS on the PSTH with a window of n_win bins; score = CAC (fluss_cp)
+        method in LIBRARY_METHODS ('sst', 'esst', 'ulsif', 'rulsif', 'edivisive'): library detectors,
+                          argmax of the score trace or best energy split (library_cp)
     References pool the bins of all resamples of a condition, so (as in the ISI pipeline) they
     include the PSTH being scored. CP resolution is one bin.
     Saves and returns a DataFrame with one row per resample (N) per k per condition.
@@ -537,7 +625,7 @@ def psth_cusum_analysis(spike_file, outfile, method = 'llr', bin_ms = 50, k_valu
         for k, n, CP, score, score_s, name_pre, name_post, div in res:
             rows.append([n, k, v, h_mean, h_var, f, bin_ms, score, CP, method, name_pre, name_post, score_s,
                          *[div[c] for c in DIVERGENCE_KEYS], *[div[c] for c in EMPIRICAL_KEYS]])
-    # divergences are per bin (divergence per s: per second); NaN for 'ks' and 'fluss'
+    # divergences are per bin (divergence per s: per second); NaN for all but 'llr'
     cols = ['N', 'k', 'variance', 'step_height', 'variance_step', 'autapse f', 'bin_ms', 'score', 'change point',
             'method', 'pre dist', 'post dist', 'score per s', *DIVERGENCE_KEYS, *EMPIRICAL_KEYS]
     df = pd.DataFrame(rows, columns = cols)

@@ -58,10 +58,10 @@ def process_single_row(row_idx, data_matrix, window_size, dt):
     return fluss_cp(data_matrix[row_idx, 0, :], window_size, dt)
 
 
-def psychometric_curve(data, x, y, hue = 'autapse f', fig = None, ax = None, add_colorbar = True, colorbar_label = 'Autapse Strength'):
+def psychometric_curve(data, x, y, hue = 'autapse f', fig = None, ax = None, add_colorbar = True, colorbar_label = 'Autapse Strength', hue_order = None):
     '''
     Plot the psychometric curve for different autapse conditions
-    
+    hue_order sets the drawing order (last drawn is on top); colours still follow the hue value
     '''
     if fig is None or ax is None:
         fig, ax = plt.subplots(1, 1, figsize = (5, 5))
@@ -74,7 +74,12 @@ def psychometric_curve(data, x, y, hue = 'autapse f', fig = None, ax = None, add
     #palette['0.0'] = 'black'  # Your pre-defined color
 
     # 3. Plot
-    sns.lineplot(data=data, x=x, y=y, hue=hue, palette=cmap_name, ax = ax, legend = False, 
+    palette = cmap_name
+    if hue_order is not None:
+        # seaborn ignores hue_order for numeric hue unless the palette is an explicit dict
+        cmap = plt.get_cmap(cmap_name)
+        palette = {v: cmap(norm(v)) for v in hue_order}
+    sns.lineplot(data=data, x=x, y=y, hue=hue, palette=palette, hue_order=hue_order, ax = ax, legend = False,
                  estimator = 'mean', errorbar = 'sd', err_style = 'band', alpha = 0.8)
     #ax.set_ylim((0, 1))
 
@@ -240,6 +245,20 @@ def cp_error_norms(data, true_cp, cp_col = 'change point',
         rows.append(row)
 
     return pd.DataFrame(rows)
+
+
+def min_step_below(norms, threshold, step_col = 'step_height', y = 'L2 |error|',
+                   group_cols = ('autapse f', 'variance')):
+    '''
+    Smallest step > 0 from which the error `y` (from cp_error_norms) stays below `threshold`
+    for every larger step, per group. NaN for a group that never gets there.
+    Returns a dataframe: group_cols + step_col.
+    '''
+    def first_step(g):
+        g = g[g[step_col] > 0].sort_values(step_col)
+        ok = (g[y] < threshold).astype(int)[::-1].cummin()[::-1].astype(bool)
+        return g.loc[ok, step_col].min()
+    return norms.groupby(list(group_cols)).apply(first_step).rename(step_col).reset_index()
 
 
 def mean_isi(spikes, t_discard = 200., step_col = 'step_height'):
@@ -831,6 +850,234 @@ def reference_bins(X, t_bin, bin_ms, t_cp):
         pre_ref, post_ref:  sorted 1D arrays
     '''
     return np.sort(X[:, t_bin <= t_cp].ravel()), np.sort(X[:, t_bin - bin_ms >= t_cp].ravel())
+
+
+# ---------------------------------------------------------------------------
+# Library detectors on a PSTH: changepoynt (SST, ESST, uLSIF, RuLSIF) and e-divisive (ruptures)
+# ---------------------------------------------------------------------------
+
+import ruptures as rpt
+from changepoynt.algorithms.sst import SST
+from changepoynt.algorithms.esst import ESST
+from changepoynt.algorithms.ulsif import ULSIF
+from changepoynt.algorithms.rulsif import RuLSIF
+
+
+class CostEnergy(rpt.base.BaseCost):
+    '''
+    Kernel change point cost with the distance kernel k(x, y) = |x| + |y| - |x - y|, which makes
+    kernel CPD the e-divisive (energy statistic, alpha = 1) method. For a segment it reduces to
+    sum_{i,j in seg} |x_i - x_j| / n_seg.
+    '''
+    model = 'energy'
+    min_size = 2
+
+    def fit(self, signal):
+        self.signal = x = np.asarray(signal, dtype = float).ravel()
+        self.D = np.abs(x[:, None] - x[None, :])
+        return self
+
+    def error(self, start, end):
+        return self.D[start:end, start:end].sum() / (end - start)
+
+
+# name -> detector factory; None = e-divisive via ruptures. The CP is the raw argmax of the score, uncorrected
+# (on a clean step SST peaks ~8 bins early, ESST ~3 early; uLSIF one window either side; RuLSIF centred).
+LIBRARY_METHODS = {
+    'sst':    lambda: SST(20),
+    'esst':   lambda: ESST(20, threads = 1),     # threads = 1: numba is limited to 1 thread inside joblib workers
+    'ulsif':  lambda: ULSIF(window_length = 10, n_windows = 20),
+    'rulsif': lambda: RuLSIF(window_length = 10, n_windows = 20),
+    'edivisive': None,
+}
+
+
+def library_cp(x, t_bin, bin_ms, method, return_trace = False):
+    '''
+    Single change point of a PSTH x (bins ending at t_bin [ms]) with a library detector.
+        changepoynt methods: argmax of the score trace (no correction);
+                             score = peak value
+        'edivisive':         exact best single split (rpt.Dynp) under CostEnergy;
+                             score = drop in cost from the split
+    CP is the start time of the first post-change bin [ms].
+    return_trace: also return the score per bin (changepoynt) or the split cost drop per bin (edivisive)
+    '''
+    make = LIBRARY_METHODS[method]
+    x = np.asarray(x, dtype = float)
+    if make is None:
+        cost = CostEnergy().fit(x)
+        n = len(x)
+        bkp = rpt.Dynp(custom_cost = cost, min_size = 2, jump = 1).fit(x).predict(n_bkps = 1)[0]
+        total = cost.error(0, n)
+        CP, score = t_bin[bkp - 1], total - cost.error(0, bkp) - cost.error(bkp, n)
+        if return_trace:
+            s = np.full(n, np.nan)
+            s[2:n - 1] = [total - cost.error(0, b) - cost.error(b, n) for b in range(2, n - 1)]
+            return CP, score, s
+        return CP, score
+    try:
+        s = make().transform(x)
+    except ValueError:     # SST's Krylov step breaks down on noiseless, rank-deficient PSTHs (var = 0)
+        nan = np.full(len(x), np.nan)
+        return (np.nan, np.nan, nan) if return_trace else (np.nan, np.nan)
+    i = np.argmax(s)
+    CP, score = t_bin[i] - bin_ms, s[i]
+    return (CP, score, s) if return_trace else (CP, score)
+
+
+# ---------------------------------------------------------------------------
+# Reference-free, non-parametric single-train detectors on the ISI series:
+# e-divisive (energy cost) and Non-Parametric Isolate-Detect (Anastasiou & Fryzlewicz 2025)
+# ---------------------------------------------------------------------------
+
+def edivisive_split(x):
+    '''
+    Best single split of x under the e-divisive energy cost (same cost as CostEnergy:
+    cost(seg) = sum_{i,j in seg} |x_i - x_j| / n_seg), for all splits at once via a 2D prefix
+    sum of |x_i - x_j|: O(n^2) instead of O(n^3) for rpt.Dynp.
+    OUT
+        bkp:    first index of the second segment (segments x[:bkp], x[bkp:]); None if n < 4
+        drop:   cost(0, n) - cost(0, b) - cost(b, n) for every split b (NaN where a segment has < 2 points)
+    '''
+    x = np.asarray(x, dtype = float)
+    n = len(x)
+    drop = np.full(n, np.nan)
+    if n < 4:
+        return None, drop
+    P = np.zeros((n + 1, n + 1))
+    P[1:, 1:] = np.abs(x[:, None] - x[None, :]).cumsum(0).cumsum(1)
+    b = np.arange(2, n - 1)
+    drop[b] = P[n, n] / n - P[b, b] / b - (P[n, n] - 2 * P[b, n] + P[b, b]) / (n - b)   # P symmetric
+    return int(b[np.argmax(drop[b])]), drop
+
+
+def isi_time_series(isi, t_isi, dt_grid):
+    '''
+    ISI step function on a regular grid from the first to the last spike: at each grid time the
+    value is the length of the ISI containing it (so long ISIs are repeated, weighted by duration).
+    OUT
+        x, t_grid
+    '''
+    t_grid = np.arange(t_isi[0] - isi[0] + dt_grid, t_isi[-1], dt_grid)
+    return isi[np.searchsorted(t_isi, t_grid)], t_grid
+
+
+def edivisive_isi_cp(isi, t_isi, mode = 'isi', dt_grid = 10., return_trace = False):
+    '''
+    e-divisive single change point of one spike train's ISI series.
+        mode = 'isi':   one point per ISI (x_i = ISI_i)
+        mode = 'time':  ISI step function sampled every dt_grid ms (isi_time_series)
+    OUT
+        CP:     time of the last pre-change point [ms] (end of that ISI / that grid time), as in llr_cp
+        score:  largest cost drop / n (comparable across trials of different length) [ms]
+        if return_trace, also t (time of each point) and drop / n
+    '''
+    x, t = (isi, t_isi) if mode == 'isi' else isi_time_series(isi, t_isi, dt_grid)
+    bkp, drop = edivisive_split(x)
+    if bkp is None:
+        return (np.nan, np.nan, t, drop) if return_trace else (np.nan, np.nan)
+    drop = drop / len(x)
+    CP, score = t[bkp - 1], drop[bkp]
+    return (CP, score, t, drop) if return_trace else (CP, score)
+
+
+def _npid_cusum(C, sp, ep):
+    '''
+    Non-parametric CUSUM on [sp, ep] (1-based, inclusive): max over thresholds u of
+    |sqrt(beta/(l alpha)) sum_pre B(u) - sqrt(alpha/(l beta)) sum_post B(u)| for each b in [sp, ep - 1].
+    C: cumulative sums of the binary sequences with a leading zero row. Returns (argmax b, max value).
+    '''
+    b = np.arange(sp, ep)
+    a, be, l = b - sp + 1, ep - b, ep - sp + 1
+    v = np.abs(np.sqrt(be / (l * a))[:, None] * (C[b] - C[sp - 1])
+               - np.sqrt(a / (l * be))[:, None] * (C[ep] - C[b])).max(1)
+    i = np.argmax(v)
+    return b[i], v[i]
+
+
+def _npid_rec(C, s, e, thr, r_all, l_all, k_l, k_r, out):
+    '''Literal port of L_inf_norm in the authors' main.R (1-based indices, same k_l / k_r carry-over).'''
+    if e - s <= 1:
+        return
+    right = [r for r in r_all if s < r < e] + [e]           # IDetect::s_e_points
+    left = [q for q in l_all if s < q < e] + [s]
+    rur, lur = len(right), len(left)
+    chp = 0
+    if k_r < k_l:
+        while chp == 0 and k_r < min(k_l, rur):
+            pos, c = _npid_cusum(C, s, right[k_r - 1])
+            if c > thr: chp, sp, ep = pos, s, right[k_r - 1]
+            else: k_r += 1
+    if k_l < k_r:
+        while chp == 0 and k_l < min(k_r, lur):
+            pos, c = _npid_cusum(C, left[k_l - 1], e)
+            if c > thr: chp, sp, ep = pos, left[k_l - 1], e
+            else: k_l += 1
+    while chp == 0 and k_l <= lur and k_r <= rur:
+        pos, c = _npid_cusum(C, s, right[k_r - 1])
+        if c > thr:
+            chp, sp, ep = pos, s, right[k_r - 1]
+            break
+        pos, c = _npid_cusum(C, left[k_l - 1], e)
+        if c > thr:
+            chp, sp, ep = pos, left[k_l - 1], e
+            break
+        k_r += 1
+        k_l += 1
+    if chp == 0:
+        return
+    out.append((chp, c, sp, ep))
+    if chp > (e + s) / 2:
+        _npid_rec(C, s, chp, thr, r_all, l_all, 1, k_r, out)
+    else:
+        _npid_rec(C, chp + 1, e, thr, r_all, l_all, max(1, k_l - 1), 1, out)
+
+
+def npid(x, thr_const = 0.9, points = 15):
+    '''
+    Non-Parametric Isolate-Detect (Anastasiou & Fryzlewicz 2025, arXiv 2504.21379), thresholded L_inf
+    version (L_inf_norm in github.com/Anastasiou-Andreas/NPID, default arguments). Change points are
+    detected by the ECDF-based CUSUM (all thresholds u = unique values except the max) on intervals
+    expanding by `points` from the right and left ends, until it exceeds thr_const * sqrt(log n).
+    OUT (sorted by position, 0-based)
+        cps:        index of the last point of each pre-change segment
+        stats:      CUSUM value at detection
+        intervals:  (start, end) inclusive of the interval that isolated each change point
+    '''
+    x = np.asarray(x, dtype = float)
+    n = len(x)
+    u = np.unique(x)[:-1]
+    if n < 3 or len(u) == 0:
+        return np.array([], int), np.array([]), np.zeros((0, 2), int)
+    C = np.zeros((n + 1, len(u)))
+    C[1:] = np.cumsum(x[:, None] > u[None, :], axis = 0)
+    out = []
+    _npid_rec(C, 1, n, thr_const * np.sqrt(np.log(n)), list(range(points, n + 1, points)),
+              list(range(n - points + 1, 0, -points)), 1, 1, out)
+    out.sort()
+    cps = np.array([o[0] - 1 for o in out], int)
+    return cps, np.array([o[1] for o in out]), np.array([(o[2] - 1, o[3] - 1) for o in out], int).reshape(-1, 2)
+
+
+def npid_cp(isi, t_isi, thr_const = 0.9, points = 3, return_trace = False):
+    '''
+    Single change point of one spike train's ISI series (one point per ISI) with npid.
+    points = 3 (not the R default 15) because a trial has only a few tens of ISIs.
+    OUT
+        CP:     end time of the last pre-change ISI of the strongest detection [ms]; NaN if none
+        score:  its CUSUM / sqrt(log n), i.e. the threshold constant at which it would just be missed; 0 if none
+        if return_trace, also the npid output (cps, stats, intervals) for all detections
+    '''
+    if len(isi) < 3:
+        return (np.nan, np.nan, npid([])) if return_trace else (np.nan, np.nan)
+    det = npid(isi, thr_const, points)
+    cps, stats_ = det[0], det[1]
+    if len(cps) == 0:
+        CP, score = np.nan, 0.
+    else:
+        i = np.argmax(stats_)
+        CP, score = t_isi[cps[i]], stats_[i] / np.sqrt(np.log(len(isi)))
+    return (CP, score, det) if return_trace else (CP, score)
 
 
 # ---------------------------------------------------------------------------
