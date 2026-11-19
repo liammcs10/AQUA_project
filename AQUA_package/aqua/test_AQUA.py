@@ -68,27 +68,27 @@ class TestAQUA(unittest.TestCase):
         # neuron with no autapse
         neuron_none = AQUA(RS_NONE)
         neuron_none.Initialise(x_start[0], t_start[0])
-        cls.X_NONE, T_NONE, _ = neuron_none.update_RK2(dt, N_iter, I_inj[0, :])
+        cls.X_NONE, T_NONE, S_NONE = neuron_none.update_RK2(dt, N_iter, I_inj[0, :])
 
         # RS neuron with tau = 0.
         neuron_0 = AQUA(RS_0)
         neuron_0.Initialise(x_start[0], t_start[0])
-        cls.X_0, T_0, _ = neuron_0.update_RK2(dt, N_iter, I_inj[0, :])
+        cls.X_0, T_0, S_0 = neuron_0.update_RK2(dt, N_iter, I_inj[0, :])
 
         # RS neuron with tau = 0.5
         neuron_05 = AQUA(RS_05)
         neuron_05.Initialise(x_start[0], t_start[0])
-        cls.X_05, T_05, _ = neuron_05.update_RK2(dt, N_iter, I_inj[0, :])
+        cls.X_05, T_05, S_05 = neuron_05.update_RK2(dt, N_iter, I_inj[0, :])
 
         # RS neuron with tau = 0.8
         neuron_08 = AQUA(RS_08)
         neuron_08.Initialise(x_start[0], t_start[0])
-        cls.X_08, T_08, _ = neuron_08.update_RK2(dt, N_iter, I_inj[0, :])
+        cls.X_08, T_08, S_08 = neuron_08.update_RK2(dt, N_iter, I_inj[0, :])
 
         # FS neuron
         neuron_FS = AQUA(FS)
         neuron_FS.Initialise(x_start[0], t_start[0])
-        cls.X_FS, T_FS, _ = neuron_FS.update_RK2(dt, N_iter, I_inj[0, :])
+        cls.X_FS, T_FS, S_FS = neuron_FS.update_RK2(dt, N_iter, I_inj[0, :])
 
         ## Initialise halfway through
         cls.idx = 5000  # initialise ~50ms into the run
@@ -112,7 +112,11 @@ class TestAQUA(unittest.TestCase):
         batchParams = [RS_NONE, RS_0, RS_05, RS_08, FS]
         batch = batchAQUA(batchParams)
         batch.Initialise(x_half, t_half)
-        cls.X_b, _, _ = batch.update_batch(dt, N_iter, I_inj, w_prev)
+        cls.X_b, _, cls.S_b = batch.update_batch(dt, N_iter, I_inj, w_prev)
+
+        # single-neuron spikes inside the window covered by both runs (batch starts at t_half)
+        cls.dt = dt
+        cls.S_single = [S[S >= t_h] for S, t_h in zip([S_NONE, S_0, S_05, S_08, S_FS], t_half)]
 
         ## END OF SETUP
     
@@ -120,20 +124,20 @@ class TestAQUA(unittest.TestCase):
     def test_singleNeuron_halfway(self):
         # tests that the base AQUA_class successfully initialises mid-run.
         self.assertTrue((self.X_05[:, self.idx:self.idx+100] == self.X_half[:, :100]).all(), 
-                        msg = "Base AQUA fails to initialise mid_run.")
+                        msg = "Base AQUA fails to initialise mid run.")
     
     def test_none_v_batch(self):
-        # Make sure base and batch AQUA are consistent when no autapse present
+        # Make sure base and batch AQUA are consistent with no autapse present
         self.assertTrue((self.X_NONE[:, self.idx:self.idx+100] == self.X_b[0, :, :100]).all(),
                         msg = "Base and batch AQUA are inconsistent when no autapse present")
 
     def test_00_v_batch(self):
-        # Make sure base and batch AQUA are consistent when no autapse present
+        # Make sure base and batch AQUA are consistent 
         self.assertTrue((self.X_0[:, self.idx:self.idx+100] == self.X_b[1, :, :100]).all(),
                         msg = "Base and batch AQUA are inconsistent when autapse has no delay")
 
     def test_05_v_batch(self):
-        # Make sure base and batch AQUA are consistent when no autapse present
+        # Make sure base and batch AQUA are consistent 
         self.assertTrue((self.X_05[:, self.idx:self.idx+100] == self.X_b[2, :, :100]).all(),
                         msg = "Base and batch AQUA are inconsistent when autapse has delay 0.5")
     
@@ -147,6 +151,18 @@ class TestAQUA(unittest.TestCase):
         self.assertTrue((self.X_FS[:, self.idx:self.idx+100] == self.X_b[4, :, :100]).all(),
                         msg = "Base and batch AQUA are inconsistent when autapse has delay 0.8")
 
+    def test_spike_times_v_batch(self):
+        # base and batch AQUA must record the same spikes at the same time step
+        for i, name in enumerate(["none", "tau 0", "tau 0.5", "tau 0.8", "FS"]):
+            with self.subTest(neuron = name):
+                single = self.S_single[i]
+                batch = self.S_b[i][~np.isnan(self.S_b[i])]
+                batch = batch[batch <= single[-1] + self.dt/2] if len(single) else batch[:0]  # batch runs past the single sim's end
+                self.assertGreater(len(single), 0, msg = "no spikes to compare")
+                self.assertEqual(len(single), len(batch), msg = f"spike counts differ ({name})")
+                # tolerance well below dt: only float round-off from the separate time accumulators is allowed
+                np.testing.assert_allclose(batch, single, rtol = 0, atol = self.dt/100,
+                                           err_msg = f"spike times differ between base and batch AQUA ({name})")
 
 
 if __name__ == "__main__":

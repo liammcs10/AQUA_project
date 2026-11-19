@@ -162,7 +162,7 @@ class AQUA:
 
             if n < delay_steps: 
                 w_tau2 = w_prev[n - delay_steps]
-            elif delay_steps == 0 or n == delay_steps:
+            elif delay_steps == 0:     # instant autapse: w(t_n) not computed yet, estimate it
                 w_tau2 = self.x[2] + k1[2] * dt 
             else:
                 w_tau2 = X[2, max(n - delay_steps, 0)]
@@ -179,7 +179,7 @@ class AQUA:
                 self.x[0] = self.c    # reset membrane potential
                 self.x[1] += self.d    # bump membrane reset variable 
                 self.x[2] += self.f    # bump autaptic variable
-                spike_times.append(self.t)
+                spike_times.append(self.t - dt)
 
             X[:, n] = self.x
 
