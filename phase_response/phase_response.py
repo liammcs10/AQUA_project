@@ -1,9 +1,5 @@
-import sys
-sys.path.append("..\\") # parent directory
-from AQUA_general import AQUA
-from batchAQUA_general import batchAQUA
-from stimulus import *
-from plotting_functions import *
+from aqua.AQUA_general import AQUA
+from aqua.batchAQUA_general import batchAQUA
 
 
 import numpy as np
@@ -21,7 +17,7 @@ Try and see why the response is different to the ramp when an autapse is present
 """
 
 
-def phase_response(neuron_params, I_h, T_pert, H_pert):
+def phase_response(neuron_params, I_h, T_pert, H_pert, perturbation = None, SAVE_ALL = True, dt = 0.005):
     """
     this function will create the phase response curve of the neuron.
 
@@ -46,12 +42,9 @@ def phase_response(neuron_params, I_h, T_pert, H_pert):
     
     """
 
-    dt = 0.005
-
-
-    perturbation = H_pert * np.ones(int(T_pert/dt))
-
-    print(f"A perturbation of height {H_pert} pA and duration {T_pert} ms")
+    if perturbation is None:    # default: square pulse
+        perturbation = H_pert * np.ones(int(T_pert/dt))
+        print(f"A perturbation of height {H_pert} pA and duration {T_pert} ms")
     #I_range = [70, 100, 150, 200, 250, 300] # range of I values.
 
 
@@ -59,7 +52,10 @@ def phase_response(neuron_params, I_h, T_pert, H_pert):
     # temporary initial conditions
     x_ini = np.array([-80, 0, 0])
     t_ini = 0.0
-    duration, t_i, t_f, t_ini, x_ini, w_past, X_base = get_baseline(neuron_params, I_h, x_ini, t_ini, dt)
+    baseline = get_baseline(neuron_params, I_h, x_ini, t_ini, dt)
+    if baseline is None:    # subthreshold: no PRC for this condition
+        return pd.DataFrame(columns = ["I_h", "Hz", "Perturbation time", "PRC"])
+    duration, t_i, t_f, t_ini, x_ini, w_past, X_base = baseline
     print(f"duration: {duration}")  # length of simulation
     print(f"t_i: {t_i}") # 2nd to last spike time
     print(f"t_f: {t_f}") # last spike time
@@ -95,7 +91,7 @@ def phase_response(neuron_params, I_h, T_pert, H_pert):
 
         w_prev = np.array([w_past for _ in range(N)]) # make past w N x delay_steps
 
-        norm_tp, PRC, delta_T, X_prc = get_PRC(N, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, t_p[lower_bound:upper_bound], w_prev)
+        norm_tp, PRC, delta_T, X_prc = get_PRC(N, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, t_p[lower_bound:upper_bound], w_prev, SAVE_ALL)
 
 
         data[0, lower_bound:upper_bound] = I_h
@@ -103,10 +99,6 @@ def phase_response(neuron_params, I_h, T_pert, H_pert):
         data[2, lower_bound:upper_bound] = norm_tp
         data[3, lower_bound:upper_bound] = PRC 
 
-    fig, ax = plt.subplots(1, 1, figsize = (5, 10))
-    ax.plot(X_base[0, :250])
-    ax.plot(X_prc[0, :250])
-    plt.show()
 
     df = pd.DataFrame(data = data.T, columns = ["I_h", "Hz", "Perturbation time", "PRC"])
     """
@@ -135,10 +127,23 @@ def phase_response(neuron_params, I_h, T_pert, H_pert):
     plt.show()
     """
 
-
     return df
     
 
+
+
+def make_perturbation(shape, H, dt, T = None, tau_r = None, tau_d = None):
+    """Perturbation current trace (pA). shape: 'square' (H for T ms), 'exp' (H*exp(-t/tau_d)),
+    'biexp' (rise tau_r, decay tau_d, peak H). exp/biexp truncated at 5*tau_d."""
+    if shape == "square":
+        return H * np.ones(int(np.round(T/dt)))
+    t = np.arange(0, 5*tau_d, dt)
+    if shape == "exp":
+        return H * np.exp(-t/tau_d)
+    if shape == "biexp":
+        y = np.exp(-t/tau_d) - np.exp(-t/tau_r)
+        return H * y / y.max()
+    raise ValueError(f"unknown perturbation shape: {shape}")
 
 
 ## STEP 1
@@ -147,7 +152,7 @@ def get_baseline(neuron_params, I_h, x_ini, t_ini, dt):
     neuron = AQUA(neuron_params)
 
     # sim duration
-    T = 2000
+    T = 4000
     N_iter = int(np.round(T/dt))
 
     #injected current
@@ -156,11 +161,13 @@ def get_baseline(neuron_params, I_h, x_ini, t_ini, dt):
 
     neuron.Initialise(x_ini, t_ini)
     X, T, spikes = neuron.update_RK2(dt, N_iter, I_inj)
+    X[2] = np.roll(X[2], -int(neuron.tau/dt))  # aqua returns w delay-shifted; undo so X[:, n] is the true state for restarts
 
     print(f"Number of spikes: {len(spikes)}")
 
     if len(spikes) <= 3:
         print("Driving current is too weak")
+        return None
     
     elif len(spikes) < 10:
         t_i = np.round(spikes[-2]/dt)*dt # second to last spike
@@ -168,25 +175,26 @@ def get_baseline(neuron_params, I_h, x_ini, t_ini, dt):
 
         # initial conditions
         t_start = np.round(((spikes[-2] + spikes[-3])/2)/dt)*dt
-        x_start = X[:, int(t_start/dt)]
- 
+
     else:
         t_i = np.round(spikes[8]/dt)*dt  # 9th spike
         t_f = np.round(spikes[9]/dt)*dt  # 10th spike
 
         # initial conditions
-        t_start = np.round(((spikes[8] + spikes[7])/2)/dt)*dt  # ms
-        #print(X[:, int(t_start/dt)].type())
-        x_start = X[:, int(t_start/dt)]
-        #print(x_start.type())
+        t_start = np.round(((spikes[8] + spikes[7])/2)/dt) * dt  # ms
 
-    
+    # round, not truncate: int(t/dt) of a float can land one step off and give len(w_past) = n_tau + 1
+    i0 = int(np.round(t_start/dt))
+    n_tau = int(neuron.tau/dt)  # matches batchAQUA's (tau/dt).astype(int)
+    x_start = X[:, i0]
+
     duration = (t_f - t_start) + (t_f - t_i)/2    # duration of phase-response sims in ms
     duration = int(np.round(duration/dt)) # duration in time steps
 
-    w_past = X[2, int((t_start - neuron.tau)/dt):int(t_start/dt)]
-    
-    return duration, t_i, t_f, t_start, x_start, w_past, X[:, int(t_start/dt): int(t_start/dt) + duration]
+    w_past = X[2, i0 - n_tau:i0]
+    assert len(w_past) == n_tau, (len(w_past), n_tau)
+
+    return duration, t_i, t_f, t_start, x_start, w_past, X[:, i0:i0 + duration]
 
 
 ## STEP 2
@@ -202,8 +210,8 @@ def get_perturbations(dt, t_i, t_f, t_start):
     
     pert_times = int(np.round((t_i - t_start)/dt)) + np.linspace(0, delta_t, num = N_pert, dtype = int) # time (indices) of perturbations
 
-
     return N_pert, pert_times       # I_inj
+
 
 def get_injected(I_h, pert_times, N, duration, perturbation):
     """ Will generate the array of injected currents for the smaller sample of simulations.
@@ -221,15 +229,15 @@ def get_injected(I_h, pert_times, N, duration, perturbation):
 
     for n, i in enumerate(pert_times):
         pert = np.zeros(duration)
-        stop = len(perturbation) + i
-        pert[i:stop] = perturbation # perturbation
+        p = perturbation[:duration - i]     # truncate pulses that run past the sim end
+        pert[i:i + len(p)] = p
 
         I_inj[n, :] += pert     # add the perturbation to the step
     
     return I_inj
 
 ## STEP 3
-def get_PRC(N_pert, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, t_p, w_past = []):
+def get_PRC(N_pert, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, t_p, w_past = [], SAVE_ALL = True):
 
     # create initialization arrays for the batch
     params_list = []
@@ -245,7 +253,10 @@ def get_PRC(N_pert, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, 
     batch.Initialise(x_start, t_start)
 
     # run perturbation sims.
-    X, _, spikes = batch.update_batch(dt, duration, I_inj, w_past)
+    if SAVE_ALL:
+        X, _, spikes = batch.update_batch(dt, duration, I_inj, w_past)
+    else:   # spike mode: only spike times kept
+        spikes, X = batch.update_batch(dt, duration, I_inj, w_past, SAVE_ALL = False), None
 
     # compare the deviation in the last spike to the time of the perturbation
     
@@ -254,11 +265,9 @@ def get_PRC(N_pert, neuron_params, duration, I_inj, x_ini, t_ini, dt, t_f, t_i, 
     norm_tp = (t_p - t_i)/delta_T   # normalized perturbation time
 
     # here, spikes[:, -1] is the t_f' for all perturbations
-    PRC = (delta_T - (spikes[:, -1] - t_i)) # ms
+    PRC = (delta_T - (spikes[:, -1] - t_i)) / delta_T # ms
 
-    return norm_tp, PRC, delta_T, X[0, :, :]
-
-
+    return norm_tp, PRC, delta_T, None if X is None else X[0, :, :]
 
     
 

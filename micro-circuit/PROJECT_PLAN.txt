@@ -6,7 +6,7 @@ QUESTION:
 METHODS:
  - Identical networks with different autapse strengths... Is there a network transition at the autapse bifurcation point? 
         - - - - YES - - - -  
- - Identical network with different noise values? (So that each neuron is slightly offset from the other...)
+ - Identical network with different noise values (So that each neuron is slightly offset from the other...): Which neuron wins out?
  - Different driving currents?
  - Can also vary the form of the autapse (poisson spike train, step currents, biexponential, etc...) 
         Where do results become essentially identical? What are the important factors? Can the job be done by anything other than an autapse?

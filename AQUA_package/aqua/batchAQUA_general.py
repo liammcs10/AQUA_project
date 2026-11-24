@@ -164,32 +164,30 @@ class batchAQUA:
             # delay_index points at the column containing w(t - tau) for each
             # neuron. It starts negative so early values can be taken from the
             # pre-simulation history in w_prev.
-            delay_index = 1-delay_steps    # store the index of the autaptic delay
-            delay_index[delay_index > 0] = 0
+            delay_index = -delay_steps     # at step n this is n-1-delay_steps, i.e. w(t_{n-1} - tau)
 
         else:       # if not SAVE_ALL, need to store passed values up to tau_delay_largest
-            TAU_LARGEST = np.max(delay_steps)
-            if TAU_LARGEST == 0:
-                TAU_LARGEST = 1
+            TAU_LARGEST = np.max(delay_steps) + 1
             X = np.zeros((self.N_models, 3, TAU_LARGEST), dtype = np.float64)
             X[:, :, -1] = self.x        # add the start value to the last element (essentially, the 'previous' timestep)
+            # seed the window with the pre-sim autapse history so delayed reads come straight from X
+            X[:, 2, :-1] = w_prev       # w_prev is (N_models, max delay_steps), i.e. exactly the window history
 
             # In memory-light mode, X is a rolling window rather than a full
             # trace. Negative delay indices keep pointing into that window.
-            delay_index = -delay_steps    # store the index of the autaptic delay
-            delay_index[delay_index >= 0] = -1      # where there is no delay, access previous tau value
+            delay_index = -delay_steps - 1  # w(t_{n-1} - tau) in the rolling window (X[:, :, -1] is t_{n-1})
         
 
         # store spike times in an inhomogeneous array
         spike_times = [[] for _ in range(self.N_models)]
 
         for n in tqdm(range(1, N_iter)):  # each neuron updated simultaneously with vectorization
-            if n <= np.max(delay_steps): # early in sim
+            if SAVE_ALL and n <= np.max(delay_steps): # early in sim (rolling window already holds w_prev)
 
                 w_tau1 = np.zeros(self.N_models)                
                 # Split neurons by whether their delayed autapse value already
                 # exists inside X or still lies before the start of this run.
-                tau_idx = np.nonzero(~(n <= delay_steps))                             # indices that need updating
+                tau_idx = np.nonzero(n > delay_steps)                                 # delayed w is already in X
                 prev_idx = np.nonzero(n <= delay_steps)                               # where delay_steps extends prior to the sim start
                 w_tau1[tau_idx] = X[tau_idx, 2, delay_index[tau_idx]]                 # get w at the delay
                 w_tau1[prev_idx] = w_prev[prev_idx, delay_index[prev_idx]]
@@ -197,9 +195,9 @@ class batchAQUA:
                 k1 = self.neuron_model(self.x, w_tau1, I_inj[:, n-1])                 # first RK param
                 
                 w_tau2 = np.zeros(self.N_models)  
-                bool_idx0 = np.nonzero(n <= delay_steps - 1)         # delay_steps extends before the sim start
+                bool_idx0 = np.nonzero(n < delay_steps)              # delay_steps extends before the sim start
                 bool_idx1 = np.nonzero(delay_steps == 0.0)           # case where there is no delay, need to estimate w_tau2
-                bool_idx2 = np.nonzero(n > delay_steps - 1)          # case where w_tau2 is has been calculated previously
+                bool_idx2 = np.nonzero(n >= delay_steps)             # case where w_tau2 is has been calculated previously
                 w_tau2[bool_idx0] = w_prev[bool_idx0, delay_index[bool_idx0]+1]
                 w_tau2[bool_idx2] = X[bool_idx2, 2, delay_index[bool_idx2]+1]                 # w_tau2 has already been calc'd and is in X
                 w_tau2[bool_idx1] = self.x[bool_idx1, 2] + k1[bool_idx1, 2] * dt            # autapse is instant, need to estimate it
